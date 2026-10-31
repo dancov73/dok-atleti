@@ -40,13 +40,13 @@ function h(tag, props = {}, ...kids) {
     else if (v === true) e.setAttribute(k, '');
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  e.append(...kids.flat().filter(x => x != null && x !== false));
+  e.append(...kids.flat(Infinity).filter(x => x != null && x !== false));
   return e;
 }
 const root = document.getElementById('app');
-const demo = new URLSearchParams(location.search).has('demo');
-const api = demo ? new Demo(today()) : new Api();
-const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'email' } };
+const params = new URLSearchParams(location.search), demo = params.has('demo');
+const api = demo ? new Demo(today(), params.get('demo') === 'login') : new Api();
+const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'welcome' } };
 
 let toastTimer;
 function toast(text) {
@@ -82,10 +82,9 @@ async function reload() {
 }
 async function messages() { S.messages = await api.rpc('athlete_messages'); }
 async function start() {
-  S.me = null;
-  await api.rpc('accept_invites');
   S.me = await api.rpc('athlete_me');
-  if (!S.me) { S.outside = true; render(); return; }
+  // signed in but in no team yet: the code of the coach is still to come
+  if (!S.me) { S.outside = true; S.login.joining = true; S.login.step = 'invite'; render(); return; }
   S.seat = await api.seat();
   await Promise.all([week(S.monday), messages()]);
   S.ready = true;
@@ -446,25 +445,48 @@ function nav() {
   }));
 }
 
+const JOIN_ERRORS = {
+  wrong: 'Codice o data di nascita non corretti.', used: 'Questo codice è già stato usato: chiedine uno nuovo al coach.', expired: 'Questo codice è scaduto: chiedine uno nuovo al coach.',
+  blocked: 'Troppi tentativi: chiedi un nuovo codice al coach.', taken: 'Questo atleta ha già un accesso: parla con il coach.', wait: "Troppi tentativi: riprova tra un'ora.",
+};
+
+/** Joining the team with the code of the coach: the account comes first, so nobody can try codes without a working email. */
+async function join() {
+  const L = S.login, answer = await api.rpc('athlete_join', { p_code: L.invite, p_birth: L.birth });
+  if (answer === 'ok' || answer === 'member') { S.outside = false; L.error = null; await start(); return; }
+  S.outside = true;
+  go({ login: { ...L, step: 'invite', error: JOIN_ERRORS[answer] || answer } });
+}
+
 function loginScreen() {
-  const L = S.login, submit = () => run(async () => {
-    L.error = null;
-    if (L.step === 'email') { await api.sendCode(L.email.trim().toLowerCase()); L.step = 'code'; render(); return; }
-    await api.verify(L.email.trim().toLowerCase(), L.code.trim());
-    await start();
-  });
-  return h('main', { class: 'login' }, h('img', { src: 'icons/lockup.svg', alt: 'Tekna Dok' }),
-    L.step === 'email'
-      ? [h('p', {}, 'Entra con l\'email con cui ti ha invitato il coach. Ti mandiamo un codice.'), h('input', { type: 'email', autocomplete: 'email', placeholder: 'nome@esempio.it', 'aria-label': 'Email', value: L.email || '', oninput: e => { L.email = e.target.value; } })]
-      : [h('p', {}, `Abbiamo mandato un codice a ${L.email}. Controlla anche lo spam.`), h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', 'aria-label': 'Codice', value: L.code || '', oninput: e => { L.code = e.target.value; } })],
-    h('div', { class: 'row' }), h('button', { class: 'btn main', onclick: submit }, L.step === 'email' ? 'Mandami il codice' : 'Entra'),
-    L.step === 'code' && h('div', { class: 'row' }, h('button', { class: 'link', onclick: () => { L.step = 'email'; render(); } }, '‹ Cambia email')));
+  const L = S.login, step = next => { L.step = next; L.error = null; render(); };
+  const field = (label, attrs, key) => [h('label', { class: 'q' }, label), h('input', { ...attrs, 'aria-label': label, value: L[key] || '', oninput: e => { L[key] = e.target.value; } })];
+  const act = work => run(async () => { try { await work(); } catch (e) { L.error = e.message; render(); } });
+  const back = (text, to) => h('button', { class: 'link', onclick: () => step(to) }, `‹ ${text}`);
+  const count = n => L.joining ? h('p', { class: 'steps' }, `Passo ${n} di 3`) : null;
+  const screens = {
+    welcome: () => [h('img', { class: 'logo', src: 'icons/lockup.svg', alt: 'Tekna Dok' }), h('p', {}, 'Entra nella tua squadra.'),
+      h('button', { class: 'btn main', onclick: () => { L.joining = true; step('invite'); } }, 'Ho un codice'), h('div', { class: 'row' }),
+      h('button', { class: 'btn alt', onclick: () => { L.joining = false; step('email'); } }, 'Ho già un account')],
+    invite: () => [S.outside ? h('button', { class: 'link', onclick: () => { api.signOut(); location.reload(); } }, 'Esci') : back('Indietro', 'welcome'), count(1), h('h1', {}, 'Il tuo codice'), h('p', { class: 'sm' }, 'Te lo ha mandato il coach.'),
+      field('Codice', { autocapitalize: 'characters', autocomplete: 'off', placeholder: 'K7F2-Q9', class: 'code' }, 'invite'), field('Data di nascita', { type: 'date', max: today() }, 'birth'),
+      h('div', { class: 'row' }), h('button', { class: 'btn main', onclick: () => act(async () => {
+        if (!L.invite?.trim() || !L.birth) { L.error = 'Scrivi il codice e la data di nascita.'; render(); return; }
+        if (api.signedIn) await join(); else step('email');
+      }) }, 'Avanti')],
+    email: () => [back('Indietro', L.joining ? 'invite' : 'welcome'), count(2), h('h1', {}, 'La tua email'), h('p', { class: 'sm' }, "Scrivi un'email che leggi: ti mandiamo un codice per entrare."),
+      field('Email', { type: 'email', autocomplete: 'email', autocapitalize: 'none', placeholder: 'nome@esempio.it' }, 'email'),
+      h('div', { class: 'row' }), h('button', { class: 'btn main', onclick: () => act(async () => { await api.sendCode((L.email || '').trim().toLowerCase()); step('code'); }) }, 'Mandami il codice')],
+    code: () => [back('Cambia email', 'email'), count(3), h('h1', {}, 'Controlla la posta'), h('p', { class: 'sm' }, `Scrivi il codice mandato a ${L.email}. Se non lo vedi, guarda nello spam.`),
+      field('Codice ricevuto', { inputmode: 'numeric', autocomplete: 'one-time-code', class: 'code' }, 'otp'),
+      h('div', { class: 'row' }), h('button', { class: 'btn main', onclick: () => act(async () => { await api.verify(L.email.trim().toLowerCase(), (L.otp || '').trim()); L.otp = ''; if (L.joining) await join(); else await start(); }) }, 'Entra'),
+      L.joining && h('p', { class: 'sm' }, 'Poi resti dentro: niente codice ai prossimi accessi.')],
+  };
+  return h('main', { class: 'login' }, screens[L.step](), L.error && h('p', { class: 'err', role: 'alert' }, L.error));
 }
 
 function screen() {
-  if (!api.signedIn) return [loginScreen()];
-  if (S.outside) return [h('main', { class: 'login' }, h('img', { src: 'icons/lockup.svg', alt: 'Tekna Dok' }), h('p', {}, 'Non risulti ancora tra gli atleti di una squadra. Chiedi al tuo coach di invitarti con questa email.'),
-    h('button', { class: 'link', onclick: () => { api.signOut(); location.reload(); } }, 'Esci')) ];
+  if (!api.signedIn || S.outside) return [loginScreen()];
   if (!S.ready) return [h('main', {}, h('p', { class: 'center' }, 'Un attimo…'))];
   const body = { pista, calendario, gare, coach, scheda }[S.tab]();
   return [h('main', {}, [body].flat(3).filter(Boolean)), nav()];

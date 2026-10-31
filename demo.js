@@ -3,8 +3,10 @@ const add = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toI
 const stop = (title, detail, channel, n = 0) => ({ title, detail, channel, squares: Array(n).fill(channel) });
 
 export class Demo {
-  constructor(today) {
+  constructor(today, login = false) {
     this.today = today;
+    this.in = !login;
+    this.joined = !login;
     this.monday = add(today, -((new Date(today + 'T12:00:00Z').getUTCDay() + 6) % 7));
     const m = this.monday, session = (id, d, title, channels, stops, did = null, extra = {}) => ({ id, date: add(m, d), title, text: stops.map(s => `${s.title} ${s.detail}`).join('\n'),
       view: { v: 1, note: '', channels, stops }, did, by_coach: false, coach_mark: null, rpe: did ? 6 : null, note: null, ...extra });
@@ -36,15 +38,17 @@ export class Demo {
       { event: '200m', date: '2026-09-06', value: 25.8, mark: '25.80', wind: -0.2, indoor: false, place: 'Fossano' },
     ];
   }
-  get signedIn() { return true; }
-  signOut() {}
+  get signedIn() { return this.in; }
+  signOut() { this.in = false; }
+  async sendCode() {}
+  async verify(email, code) { if (code !== '123456') throw new Error('Codice non valido.'); this.in = true; }
   async seat() { return { team_id: 'demo', athlete_id: 'demo' }; }
   async wellness(from, to) { return this.moods.filter(w => w.day >= from && w.day <= to); }
   async reports() { return []; }
   async rpc(name, a = {}) {
     switch (name) {
-      case 'accept_invites': return 0;
-      case 'athlete_me': return { team: 'Squadra di prova', athlete: 'demo', first_name: 'Giulia', health_ok: true };
+      case 'athlete_join': if (a.p_code.replace(/\W/g, '').toUpperCase() !== 'K7F2Q9' || a.p_birth !== '2010-03-04') return 'wrong'; this.joined = true; return 'ok';
+      case 'athlete_me': return this.joined ? { team: 'Squadra di prova', athlete: 'demo', first_name: 'Giulia', health_ok: true } : null;
       case 'athlete_week': return {
         sessions: this.sessions.filter(s => s.date >= a.p_from && s.date <= a.p_to),
         events: this.events.filter(e => e.start <= a.p_to && (e.end || e.start) >= a.p_from),

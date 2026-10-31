@@ -27,8 +27,15 @@ export class Api {
     const s = this.session;
     if (!s) return null;
     if (s.expires - Date.now() > 60000) return s.access;
+    // one renewal at a time: a refresh token holds once, and the pages ask several things together
+    this.renewing ||= this.renew(s).finally(() => { this.renewing = null; });
+    return this.renewing;
+  }
+
+  async renew(s) {
     try { this.take(await this.call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: s.refresh }, token: false })); }
-    catch (e) { if (e.status >= 400 && e.status < 500) { this.signOut(); throw new Error('Accesso scaduto: entra di nuovo con il codice.'); } throw e; }
+    // out only when the server refuses the session: no network, or too many requests, leave the athlete in
+    catch (e) { if ([400, 401, 403].includes(e.status)) { this.signOut(); throw new Error('Accesso scaduto: entra di nuovo con il codice.'); } throw e; }
     return this.session.access;
   }
 

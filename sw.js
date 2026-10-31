@@ -1,5 +1,5 @@
 // Only the pages of the app stay on the phone, for opening it fast and offline: never the data, which goes straight to the cloud.
-const CACHE = 'dok-1';
+const CACHE = 'dok-2';
 const SHELL = ['.', 'index.html', 'style.css', 'app.js', 'api.js', 'track.js', 'demo.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/lockup.svg'];
 
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));

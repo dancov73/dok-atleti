@@ -100,9 +100,11 @@ input, textarea { width: 100%; font: inherit; color: inherit; background: var(--
 .grid button.d, .grid button.m { opacity: 1; }
 .grid svg { display: block; margin: auto; width: 30px; height: 30px; }
 .report { display: block; width: 100%; border-radius: 12px; margin-top: 8px; }
-.login { max-width: 380px; margin: 12vh auto 0; padding: 0 8px; }
-.login img { display: block; width: 160px; margin: 0 auto 22px; }
 .toast { position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: #2F3946; border-radius: 11px; padding: 9px 14px; max-width: 90vw; z-index: 5; }
 .err { color: var(--err); }
 .center { text-align: center; color: var(--muted); padding: 40px 12px; }
 .chip .ink { color: #4A2B00; }
+main.login { max-width: 380px; margin: 0 auto; width: 100%; padding-top: calc(28px + env(safe-area-inset-top)); }
+main.login .logo { display: block; width: 150px; margin: 18px auto 24px; }
+.steps { color: var(--faint); font-size: 13px; margin: 14px 0 6px; }
+input.code { font: 600 21px ui-monospace, "Noto Sans Mono", monospace; letter-spacing: 3px; text-transform: uppercase; }
