@@ -108,3 +108,8 @@ main.login { max-width: 380px; margin: 0 auto; width: 100%; padding-top: calc(28
 main.login .logo { display: block; width: 150px; margin: 18px auto 24px; }
 .steps { color: var(--faint); font-size: 13px; margin: 14px 0 6px; }
 input.code { font: 600 21px ui-monospace, "Noto Sans Mono", monospace; letter-spacing: 3px; text-transform: uppercase; }
+.offbar { display: flex; align-items: center; gap: 8px; width: calc(100% + 24px); margin: -4px -12px 10px; padding: 7px 12px; background: #2F3946; color: #D5DAE0; font-size: 14px; text-align: left; }
+.offbar svg { flex: none; }
+.offbar em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; color: var(--orange-soft); border: 1px solid var(--orange-soft); border-radius: 9px; padding: 1px 8px; white-space: nowrap; }
+.pend { display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 14px; margin-top: -2px; }
+.pend svg { flex: none; }

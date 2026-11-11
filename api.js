@@ -3,6 +3,20 @@
 const BASE = 'https://lfctbribuafafwderqqh.supabase.co';
 const KEY = 'sb_publishable_vFAQJFltOOBdm9o1ZU8Uiw_Umgon2N0';
 const STORE = 'dok.session';
+const WAIT = 15000;
+
+/** No answer: no network, or one too weak to use. The pages show the copy on the phone, the marks wait there (docs/ruoli.md §11). */
+export function offline() { const e = new Error('Senza rete'); e.offline = true; return e; }
+export const isOffline = e => e?.offline === true;
+
+async function net(url, init) {
+  if (navigator.onLine === false) throw offline();
+  const stop = new AbortController(), timer = setTimeout(() => stop.abort(), WAIT);
+  try {
+    const r = await fetch(url, { ...init, signal: stop.signal });
+    return { r, body: init?.blob ? await r.blob() : await r.text() };
+  } catch { throw offline(); } finally { clearTimeout(timer); }
+}
 
 function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; } }
 function keep(s) { try { if (s) localStorage.setItem(STORE, JSON.stringify(s)); else localStorage.removeItem(STORE); } catch { /* a private window: the session lasts the page */ } }
@@ -10,13 +24,16 @@ function keep(s) { try { if (s) localStorage.setItem(STORE, JSON.stringify(s)); 
 export class Api {
   constructor() { this.session = load(); }
   get signedIn() { return !!this.session; }
+  /** The account, from the token: the copies and the marks on the phone belong to it. */
+  get userId() {
+    try { const p = this.session.access.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(p + '='.repeat((4 - p.length % 4) % 4))).sub || null; } catch { return null; }
+  }
 
   async call(path, { method = 'GET', body, token = true, headers = {} } = {}) {
     const h = { apikey: KEY, Accept: 'application/json', ...headers };
     if (body !== undefined) h['Content-Type'] = 'application/json';
     if (token) { const t = await this.token(); if (t) h.Authorization = `Bearer ${t}`; }
-    const r = await fetch(BASE + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
-    const text = await r.text();
+    const { r, body: text } = await net(BASE + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = null; }
     if (!r.ok) { const e = new Error(data?.message || data?.msg || data?.error_description || `errore ${r.status}`); e.status = r.status; throw e; }
@@ -35,7 +52,7 @@ export class Api {
   async renew(s) {
     try { this.take(await this.call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: s.refresh }, token: false })); }
     // out only when the server refuses the session: no network, or too many requests, leave the athlete in
-    catch (e) { if ([400, 401, 403].includes(e.status)) { this.signOut(); throw new Error('Accesso scaduto: entra di nuovo con il codice.'); } throw e; }
+    catch (e) { if ([400, 401, 403].includes(e.status)) { this.signOut(); this.refused?.(); throw new Error('Accesso scaduto: entra di nuovo con il codice.'); } throw e; }
     return this.session.access;
   }
 
@@ -65,7 +82,14 @@ export class Api {
     const files = (list || []).filter(f => /^\d{4}-\d{2}-\d{2}_.*\.png$/.test(f.name));
     return Promise.all(files.map(async f => {
       const s = await this.call(`/storage/v1/object/sign/reports/${folder}/${f.name}`, { method: 'POST', body: { expiresIn: 3600 } });
-      return { date: f.name.slice(0, 10), from: f.name.slice(11, -4), url: BASE + '/storage/v1' + s.signedURL };
+      return { name: f.name, date: f.name.slice(0, 10), from: f.name.slice(11, -4), url: BASE + '/storage/v1' + s.signedURL };
     }));
+  }
+
+  /** A report as an image to keep on the phone. */
+  async image(url) {
+    const { r, body } = await net(url, { blob: true });
+    if (!r.ok) { const e = new Error(`errore ${r.status}`); e.status = r.status; throw e; }
+    return body;
   }
 }

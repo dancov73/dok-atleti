@@ -1,4 +1,4 @@
-# Tekna Dok, la web app degli atleti
+# Dok Athlon, la web app degli atleti di Tekna Dok
 
 Indirizzo: https://dok.k3iron.it
 

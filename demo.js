@@ -1,4 +1,7 @@
-// Invented data, to look at the pages with no account (?demo=1): nothing leaves the browser.
+// Invented data, to look at the pages with no account (?demo=1): nothing leaves the browser. With the phone off the network it answers
+// as the cloud would not, so the use with no network can be tried too.
+import { offline } from './api.js';
+
 const add = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const stop = (title, detail, channel, n = 0) => ({ title, detail, channel, squares: Array(n).fill(channel) });
 
@@ -39,13 +42,16 @@ export class Demo {
     ];
   }
   get signedIn() { return this.in; }
+  get userId() { return 'demo'; }
+  net() { if (navigator.onLine === false) throw offline(); }
   signOut() { this.in = false; }
-  async sendCode() {}
-  async verify(email, code) { if (code !== '123456') throw new Error('Codice non valido.'); this.in = true; }
-  async seat() { return { team_id: 'demo', athlete_id: 'demo' }; }
-  async wellness(from, to) { return this.moods.filter(w => w.day >= from && w.day <= to); }
-  async reports() { return []; }
+  async sendCode() { this.net(); }
+  async verify(email, code) { this.net(); if (code !== '123456') throw new Error('Codice non valido.'); this.in = true; }
+  async seat() { this.net(); return { team_id: 'demo', athlete_id: 'demo' }; }
+  async wellness(from, to) { this.net(); return this.moods.filter(w => w.day >= from && w.day <= to); }
+  async reports() { this.net(); return []; }
   async rpc(name, a = {}) {
+    this.net();
     switch (name) {
       case 'athlete_join': if (a.p_code.replace(/\W/g, '').toUpperCase() !== 'K7F2Q9' || a.p_birth !== '2010-03-04') return 'wrong'; this.joined = true; return 'ok';
       case 'athlete_me': return this.joined ? { team: 'Squadra di prova', athlete: 'demo', first_name: 'Giulia', health_ok: true } : null;

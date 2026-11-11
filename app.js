@@ -1,7 +1,8 @@
 // The web app of the athletes (drawings approved on 30/10/2026, docs/ruoli.md §6–§10). It computes nothing: it reads what the coach
 // published and writes the athlete's own marks. Every text from the cloud goes on the page as text, never as markup.
-import { Api } from './api.js';
+import { Api, isOffline } from './api.js';
 import { Demo } from './demo.js';
+import { Store } from './store.js';
 import { CHANNELS, HEALTH, drawTrack, drawRings, el, face } from './track.js';
 
 const LANES = ['ala', 'lat', 'aer', 'for', 'tec'], ZONES = ['sog', 'vo2'];
@@ -46,7 +47,11 @@ function h(tag, props = {}, ...kids) {
 const root = document.getElementById('app');
 const params = new URLSearchParams(location.search), demo = params.has('demo');
 const api = demo ? new Demo(today(), params.get('demo') === 'login') : new Api();
-const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'welcome' } };
+const store = new Store(demo ? 'dok-demo' : 'dok');
+const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'welcome' },
+  queue: [], at: {}, offline: false };
+// the cloud refused the session: the copies go, the marks still to send wait for the same account
+api.refused = () => { store.clearCopies(); S.ready = false; S.weeks.clear(); };
 
 let toastTimer;
 function toast(text) {
@@ -57,7 +62,7 @@ function toast(text) {
   toastTimer = setTimeout(() => t.remove(), 3500);
 }
 async function run(work) {
-  try { await work(); } catch (e) { toast(e.message === 'Failed to fetch' ? 'Senza rete: riprova tra poco.' : e.message); }
+  try { await work(); } catch (e) { toast(isOffline(e) ? "Senza rete: riprova quando c'è campo." : e.message); if (!api.signedIn) render(); }
 }
 function render() {
   const y = window.scrollY;
@@ -66,29 +71,170 @@ function render() {
 }
 const go = patch => { Object.assign(S, patch); render(); };
 
-// ---------------------------------------------------------------- data
+// ---------------------------------------------------------------- data: the cloud, and with no network the copy on the phone (§11)
+/** The weeks kept on the phone: the last one, this one, the next one. */
+const KEPT = () => { const m = mondayOf(today()); return [add(m, -7), m, add(m, 7)]; };
+const SAVED = "Salvata sul telefono: parte appena c'è rete";
+
+async function copy(key) {
+  const c = await store.get(key);
+  if (c) S.at[key] = c.at;
+  return c?.data;
+}
+async function keep(key, data) { S.at[key] = Date.now(); await store.put(key, data); }
+
+/** From the cloud, kept on the phone when [save]; with no network, the copy, if there is one. */
+async function fresh(key, load, save = true) {
+  let data;
+  try { data = await load(); } catch (e) {
+    if (!isOffline(e)) throw e;
+    S.offline = true;
+    const c = await copy(key);
+    if (c === undefined) throw e;
+    return c;
+  }
+  const was = S.offline;
+  S.offline = false;
+  if (save) await keep(key, data); else S.at[key] = Date.now();
+  if (was && S.queue.length) setTimeout(() => run(async () => told(await sendQueue())));
+  return data;
+}
+
 async function week(monday, force = false) {
   if (!force && S.weeks.has(monday)) return S.weeks.get(monday);
   const end = add(monday, 6);
-  const [w, ok] = await Promise.all([api.rpc('athlete_week', { p_from: monday, p_to: end }), S.me.health_ok ? api.wellness(monday, end) : []]);
-  S.weeks.set(monday, w);
-  S.wellness.set(monday, ok || []);
-  return w;
+  const c = await fresh(`week:${monday}`, async () => {
+    const [w, ok] = await Promise.all([api.rpc('athlete_week', { p_from: monday, p_to: end }), S.me.health_ok ? api.wellness(monday, end) : []]);
+    return { w, ok: ok || [] };
+  }, KEPT().includes(monday)).catch(e => { throw isOffline(e) ? new Error('Questa settimana non è sul telefono: serve la rete.') : e; });
+  S.weeks.set(monday, c.w);
+  S.wellness.set(monday, c.ok);
+  applyQueue();
+  return c.w;
 }
-async function reload() {
-  S.weeks.delete(S.monday);
-  await week(S.monday, true);
-  render();
-}
-async function messages() { S.messages = await api.rpc('athlete_messages'); }
+async function messages() { S.messages = await fresh('messages', () => api.rpc('athlete_messages')); applyQueue(); }
+
+/** The copy first, so the app opens at once also with no network; then the cloud, the marks waiting and what to keep for later. */
 async function start() {
-  S.me = await api.rpc('athlete_me');
-  // signed in but in no team yet: the code of the coach is still to come
-  if (!S.me) { S.outside = true; S.login.joining = true; S.login.step = 'invite'; render(); return; }
-  S.seat = await api.seat();
-  await Promise.all([week(S.monday), messages()]);
+  await sortStore();
+  const me = await copy('me'), w = me && await copy(`week:${S.monday}`);
+  if (w) {
+    S.me = me; S.seat = await copy('seat');
+    S.weeks.set(S.monday, w.w); S.wellness.set(S.monday, w.ok); S.messages = (await copy('messages')) || [];
+    applyQueue(); S.ready = true; render();
+  }
+  try {
+    const now = await api.rpc('athlete_me');
+    // signed in but in no team yet: the code of the coach is still to come
+    if (!now) { await store.clearCopies(); S.ready = false; S.outside = true; S.login.joining = true; S.login.step = 'invite'; render(); return; }
+    S.me = now; await keep('me', now);
+    S.seat = await api.seat(); await keep('seat', S.seat);
+  } catch (e) {
+    if (!isOffline(e)) throw e;
+    S.offline = true; S.stuck = !S.ready; render();
+    return;
+  }
+  S.offline = false; S.stuck = false;
+  await Promise.all([week(S.monday, true), messages()]);
   S.ready = true;
   render();
+  if (!demo) store.keepOn();
+  told(await sendQueue());
+  // what the athlete may want with no network later: the weeks around, the races, the last report
+  Promise.allSettled([week(KEPT()[0], true), week(KEPT()[2], true), races(), lastReport()]);
+}
+
+/** The phone holds the copies of one account, and the weeks around today only. */
+async function sortStore() {
+  const id = api.userId, owner = await store.get('owner');
+  if (owner && owner.data !== id) await store.clearCopies();
+  await store.put('owner', id);
+  for (const q of await store.queue()) if (q.user !== id) await store.remove(q.id); // someone else's: they cannot leave from this account
+  S.queue = (await store.queue()).filter(q => q.user === id);
+  for (const k of await store.keys()) if (k.startsWith('week:') && !KEPT().includes(k.slice(5))) await store.del(k);
+}
+
+/** The network is back, or the app is again in front: fresh data, then the marks waiting. */
+async function resume() {
+  if (!S.ready) return start();
+  S.weeks.clear();
+  await week(S.monday);
+  await messages();
+  render();
+  told(await sendQueue());
+}
+
+// ---------------------------------------------------------------- the marks of the athlete, on the phone first (§11)
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+
+/** Kept on the phone, then sent with the ones before it. 'sent', or 'kept' when the network is missing or too slow to wait for (the
+ * sending goes on behind); a no of the cloud is thrown. */
+async function write(name, args) {
+  const item = { name, args, at: new Date().toISOString(), user: api.userId };
+  item.id = await store.add(item);
+  S.queue.push(item);
+  applyQueue();
+  const going = sendQueue(), failed = await Promise.race([going, new Promise(ok => setTimeout(() => ok(null), 4000))]);
+  if (!failed) { going.then(told); return 'kept'; }
+  const mine = failed.find(f => f.item.id === item.id);
+  told(failed.filter(f => f !== mine));
+  if (mine) throw new Error(mine.message);
+  return S.queue.some(q => q.id === item.id) ? 'kept' : 'sent';
+}
+
+let sending = null;
+function sendQueue() { return sending ||= drain().finally(() => { sending = null; }); }
+
+/** In order, until the network or the account stops it; a mark the cloud refuses is dropped, as it would refuse it again. */
+async function drain() {
+  const failed = [];
+  let moved = false;
+  for (const item of [...S.queue]) {
+    try {
+      try { await api.rpc(item.name, item.args); }
+      catch (e) { if (e.status === 404 && item.args.p_at !== undefined) { const { p_at, ...old } = item.args; await api.rpc(item.name, old); } else throw e; }
+      S.offline = false;
+    } catch (e) {
+      if (isOffline(e)) { S.offline = true; break; }
+      if (!api.signedIn || !e.status || e.status === 401 || e.status >= 500) break;
+      failed.push({ item, message: e.message });
+    }
+    await store.remove(item.id);
+    S.queue = S.queue.filter(q => q.id !== item.id);
+    moved = true;
+  }
+  if (moved) {
+    S.weeks.clear();
+    try { await week(S.monday); await messages(); } catch { /* the copy stays on screen */ }
+    render();
+  }
+  return failed;
+}
+
+function told(failed) {
+  if (failed.length) toast(`${failed.length === 1 ? 'Una segnatura non è partita' : `${failed.length} segnature non sono partite`}: ${failed[0].message}`);
+}
+
+/** What waits on the phone, drawn over what came from the cloud or from the copy. */
+function applyQueue() {
+  for (const { name, args: a } of S.queue) {
+    if (name === 'athlete_mark') for (const w of S.weeks.values()) {
+      const s = w.sessions.find(x => x.id === a.p_workout);
+      if (s) Object.assign(s, { did: a.p_did, rpe: a.p_rpe, note: a.p_note, pending: true });
+    }
+    if (name === 'athlete_wellness') {
+      const m = mondayOf(a.p_day), list = S.wellness.get(m);
+      if (list) S.wellness.set(m, list.filter(x => x.day !== a.p_day).concat({ day: a.p_day, sleep_quality: a.p_sleep_quality, sleep_band: a.p_sleep_band, fatigue: a.p_fatigue,
+        soreness: a.p_soreness, stress: a.p_stress, mood: a.p_mood, health: a.p_health, pending: true }));
+    }
+    if (name === 'athlete_absence') for (const [m, w] of S.weeks) {
+      w.events = w.events.filter(e => e.id !== a.p_id);
+      if (a.p_start <= add(m, 6) && (a.p_end || a.p_start) >= m) w.events.push({ id: a.p_id, title: a.p_reason, type: 'Assenza', start: a.p_start, end: a.p_end, place: null,
+        days: a.p_days?.length ? a.p_days : null, mine: true, called_for: null, reserve_for: null, pending: true });
+    }
+    if (name === 'athlete_absence_remove') for (const w of S.weeks.values()) w.events = w.events.filter(e => e.id !== a.p_id);
+    if (name === 'athlete_message_seen') { const m = S.messages.find(x => x.id === a.p_id); if (m) Object.assign(m, { seen: true, pending: true }); }
+  }
 }
 
 // ---------------------------------------------------------------- the lanes
@@ -202,7 +348,7 @@ function sessionBox(s, day, away) {
 
 function markBox(s) {
   if (s.by_coach) return h('p', {}, h('b', {}, `${DID[s.did] || 'Segnata'}`), h('small', {}, ' · dal coach') );
-  if (s.did) return h('div', {}, h('p', {}, h('b', {}, DID[s.did]), s.rpe ? ` · sforzo ${s.rpe} su 10` : ''), s.note && h('div', { class: 'text' }, s.note),
+  if (s.did) return h('div', {}, h('p', {}, h('b', {}, DID[s.did]), s.rpe ? ` · sforzo ${s.rpe} su 10` : ''), s.pending && pend(), s.note && h('div', { class: 'text' }, s.note),
     h('div', { class: 'row' }, h('button', { class: 'link', onclick: () => go({ form: { id: s.id, did: s.did, rpe: s.rpe, note: s.note || '', picks: [] } }) }, 'Cambia ›')));
   const open = did => go({ form: { id: s.id, did, rpe: null, note: '', picks: [] } });
   return h('div', { class: 'btns' }, h('button', { class: 'btn main', onclick: () => open('DONE') }, 'Fatta'), h('button', { class: 'btn alt', onclick: () => open('OTHER') }, 'Modificata'),
@@ -210,7 +356,10 @@ function markBox(s) {
 }
 
 function saveMark(id, did, rpe, note) {
-  return run(async () => { await api.rpc('athlete_mark', { p_workout: id, p_did: did, p_rpe: rpe, p_note: note }); S.form = null; await reload(); toast('Segnata: la vede il coach'); });
+  return run(async () => {
+    const how = await write('athlete_mark', { p_workout: id, p_did: did, p_rpe: rpe, p_note: note, p_at: new Date().toISOString() });
+    S.form = null; render(); toast(how === 'sent' ? 'Segnata: la vede il coach' : SAVED);
+  });
 }
 
 function markForm(s, f) {
@@ -232,9 +381,10 @@ function absenceBox(e, day) {
   const days = e.days?.map(d => DAY_NAMES[d - 1].toLowerCase()).join(', ');
   const when = days ? `Ogni ${days} fino al ${dayMonth(e.end)}` : e.end && e.end !== e.start ? `Dal ${dayMonth(e.start)} al ${dayMonth(e.end)}` : longDay(e.start);
   return h('div', { class: 'det' }, h('small', {}, longDay(day)), h('div', { class: 'title' }, `Assente: ${e.title.toLowerCase()}`), h('div', { class: 'text' }, when),
+    e.pending && pend(),
     e.mine ? h('div', { class: 'row' },
       h('button', { class: 'link', onclick: () => go({ tab: 'pista', form: { what: 'absence', id: e.id, mode: e.days ? 'week' : e.end && e.end !== e.start ? 'span' : 'day', start: e.start, end: e.end || e.start, days: e.days || [weekday(e.start) + 1], reason: e.title, note: '' } }) }, 'Cambia ›'),
-      h('button', { class: 'link', onclick: () => run(async () => { await api.rpc('athlete_absence_remove', { p_id: e.id }); S.weeks.clear(); await week(S.monday); render(); toast('Assenza tolta'); }) }, 'Togli ›'))
+      h('button', { class: 'link', onclick: () => run(async () => { const how = await write('athlete_absence_remove', { p_id: e.id }); render(); toast(how === 'sent' ? 'Assenza tolta' : SAVED); }) }, 'Togli ›'))
       : h('p', {}, h('small', {}, 'Per cambiarla parla con il coach.')));
 }
 
@@ -250,8 +400,9 @@ function absenceForm() {
   const ok = f.start >= min && (f.mode === 'day' || (f.end && f.end >= f.start)) && (f.mode !== 'week' || f.days.length > 0);
   const set = patch => { Object.assign(f, patch); render(); };
   const save = () => run(async () => {
-    await api.rpc('athlete_absence', { p_id: f.id || null, p_start: f.start, p_end: f.mode === 'day' ? null : f.end, p_days: f.mode === 'week' ? f.days : null, p_reason: f.reason, p_note: f.note.trim() || null });
-    S.weeks.clear(); S.form = null; await week(S.monday); render(); toast('Il coach la vede in Dok');
+    // the id made here: sent twice with no answer in between, it stays one absence
+    const how = await write('athlete_absence', { p_id: f.id || uuid(), p_start: f.start, p_end: f.mode === 'day' ? null : f.end, p_days: f.mode === 'week' ? f.days : null, p_reason: f.reason, p_note: f.note.trim() || null });
+    S.form = null; render(); toast(how === 'sent' ? 'Il coach la vede in Dok' : SAVED);
   });
   return [
     h('button', { class: 'link', onclick: () => go({ form: null }) }, '‹ Annulla'), h('h1', {}, "Segna un'assenza"),
@@ -274,8 +425,8 @@ function wellnessForm() {
   const set = (k, v) => { a[k] = v; render(); };
   const face4 = v => { const s = el('svg', { viewBox: '0 0 60 60', width: '100%', 'aria-hidden': 'true' }); face(s, 30, 30, 26, v); return s; };
   const save = () => run(async () => {
-    await api.rpc('athlete_wellness', { p_day: today(), p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health });
-    S.form = null; await reload(); toast('Grazie! La tua faccina è sulla pista');
+    const how = await write('athlete_wellness', { p_day: today(), p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health });
+    S.form = null; render(); toast(how === 'sent' ? 'Grazie! La tua faccina è sulla pista' : SAVED);
   });
   return [
     h('button', { class: 'link', onclick: () => go({ form: null }) }, '‹ Annulla'), h('h1', {}, 'Come stai?'),
@@ -385,20 +536,21 @@ function gare() {
     S.races.slice(0, 12).map(r => h('div', { class: 'item' }, h('b', {}, eventName(r.event)), h('div', {}, String(r.mark ?? r.value).replace('.', ','), h('small', {}, [r.place, r.date.length === 10 ? dayMonth(r.date) : r.date, r.wind != null ? `vento ${r.wind > 0 ? '+' : ''}${String(r.wind).replace('.', ',')}` : null].filter(Boolean).join(' · '))))),
   ];
 }
-function openGare() {
-  run(async () => {
+async function races() {
+  const g = await fresh('races', async () => {
     const [w, res] = await Promise.all([api.rpc('athlete_week', { p_from: today(), p_to: add(today(), 365) }), api.rpc('athlete_results')]);
-    S.upcoming = w.events.filter(isRace).sort((a, b) => a.start.localeCompare(b.start));
-    S.races = res?.races || [];
-    go({ tab: 'gare' });
+    return { upcoming: w.events.filter(isRace).sort((a, b) => a.start.localeCompare(b.start)), races: res?.races || [] };
   });
+  S.upcoming = g.upcoming.filter(e => (e.end || e.start) >= today());
+  S.races = g.races;
 }
+function openGare() { run(async () => { await races(); go({ tab: 'gare' }); }); }
 
 // ---------------------------------------------------------------- Coach
 const TAGS = { NOTICE: ['Avviso', '#9085E9', '#1B1442'], SESSION: ['Sulla seduta', '#3987E5', '#fff'], PERSONAL: ['Per te', '#FF9900', '#2B1A00'] };
 
 function coach() {
-  const seen = m => run(async () => { await api.rpc('athlete_message_seen', { p_id: m.id }); await messages(); render(); });
+  const seen = m => run(async () => { await write('athlete_message_seen', { p_id: m.id }); render(); });
   return [
     h('h1', {}, 'Dal coach'),
     !S.messages.length && h('p', { class: 'center' }, 'Qui trovi gli avvisi e i messaggi dei tuoi coach.'),
@@ -407,23 +559,52 @@ function coach() {
       tag.style.color = ink;
       return h('article', { class: 'msg' }, !m.seen && h('i', { class: 'dot' }),
         h('header', {}, tag, h('small', {}, `Da ${m.from || 'Coach'} · ${short(m.at.slice(0, 10))}`)), h('p', {}, m.text),
-        m.seen ? h('small', {}, 'Visto') : h('button', { class: 'link', onclick: () => seen(m) }, 'Segna come visto'));
+        m.seen ? h('small', {}, m.pending ? 'Visto · sul telefono' : 'Visto') : h('button', { class: 'link', onclick: () => seen(m) }, 'Segna come visto'));
     }),
   ];
 }
 
 // ---------------------------------------------------------------- Scheda
-function openScheda() {
-  run(async () => { S.reports = await api.reports(S.seat); go({ tab: 'scheda', report: 0 }); });
+/** The reports from the cloud, the last one kept on the phone as an image; with no network, that one. */
+async function lastReport() {
+  let list;
+  try { list = await api.reports(S.seat); } catch (e) {
+    if (!isOffline(e)) throw e;
+    S.offline = true;
+    const k = await copy('report');
+    S.reports = k ? [{ date: k.date, from: k.from, url: shown(k.image) }] : [];
+    return;
+  }
+  S.reports = list;
+  S.at.report = Date.now();
+  const k = await store.get('report'), r = list[0];
+  if (!r) await store.del('report');
+  else if (k?.data.name !== r.name) await keep('report', { name: r.name, date: r.date, from: r.from, image: await api.image(r.url) });
 }
+let shownUrl;
+const shown = image => { if (shownUrl) URL.revokeObjectURL(shownUrl); shownUrl = URL.createObjectURL(image); return shownUrl; };
+
+function openScheda() {
+  run(async () => { await lastReport(); go({ tab: 'scheda', report: 0 }); });
+}
+
+/** Out of the account: everything on the phone goes, and first a word if some marks have not left. */
+async function signOut() {
+  const n = S.queue.length;
+  if (n && !confirm(`${n === 1 ? 'Una segnatura non è ancora partita e uscendo si perde' : `${n} segnature non sono ancora partite e uscendo si perdono`}. Vuoi uscire lo stesso?`)) return;
+  await store.clearAll();
+  api.signOut();
+  location.reload();
+}
+
 function scheda() {
   const list = S.reports || [], r = list[S.report || 0];
   return [
     r ? [h('small', {}, `Da ${r.from} · ${dayMonth(r.date)}`), h('h1', {}, 'Il tuo report'), h('img', { class: 'report', src: r.url, alt: `Report del ${dayMonth(r.date)}` })]
-      : [h('h1', {}, 'Il tuo report'), h('p', { class: 'center' }, 'Il tuo coach non ha ancora pubblicato un report.')],
+      : [h('h1', {}, 'Il tuo report'), h('p', { class: 'center' }, S.offline ? 'Il report si vede con la rete.' : 'Il tuo coach non ha ancora pubblicato un report.')],
     list.length > 1 && h('h2', {}, 'Report precedenti'),
     list.map((x, i) => i !== (S.report || 0) && h('button', { class: 'item', onclick: () => { go({ report: i }); window.scrollTo(0, 0); } }, h('b', {}, short(x.date)), h('div', {}, `Da ${x.from}`))),
-    h('div', { class: 'row' }), !demo && h('button', { class: 'link', onclick: () => { api.signOut(); location.reload(); } }, 'Esci dall\'account'),
+    h('div', { class: 'row' }), !demo && h('button', { class: 'link', onclick: signOut }, 'Esci dall\'account'),
   ];
 }
 
@@ -485,13 +666,46 @@ function loginScreen() {
   return h('main', { class: 'login' }, screens[L.step](), L.error && h('p', { class: 'err', role: 'alert' }, L.error));
 }
 
+// ---------------------------------------------------------------- with no network (§11, variant A of 11/11/2026)
+const icon = (d, size) => {
+  const svg = el('svg', { viewBox: '0 0 24 24', width: size, height: size, 'aria-hidden': 'true' });
+  d.forEach(x => el('path', { d: x, fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg));
+  return svg;
+};
+const NO_NET = ['M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.1 4.5 4.5 0 0 0 7 18z', 'M4 3l16 18'];
+const CLOCK = ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M12 7v5l3 2'];
+const pend = () => h('p', { class: 'pend' }, icon(CLOCK, 16), h('span', {}, "Sul telefono · parte appena c'è rete"));
+
+/** When what is on the screen was taken from the cloud. */
+function copyLabel() {
+  const at = { gare: S.at.races, coach: S.at.messages, scheda: S.at.report }[S.tab] ?? S.at[`week:${S.monday}`];
+  if (!at) return '';
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(at), o = { timeZone: 'Europe/Rome' };
+  const time = new Intl.DateTimeFormat('it-IT', { ...o, hour: '2-digit', minute: '2-digit' }).format(at);
+  if (day === today()) return ` · copia delle ${time}`;
+  if (day > add(today(), -6)) return ` · copia di ${new Intl.DateTimeFormat('it-IT', { ...o, weekday: 'short' }).format(at)} ${time}`;
+  return ` · copia del ${new Intl.DateTimeFormat('it-IT', { ...o, day: 'numeric', month: 'short' }).format(at)}`;
+}
+
+/** The strip on top: what is seen is the copy on the phone, and how many marks wait. A touch tries the network again. */
+function offBar() {
+  if (!S.offline) return null;
+  const n = S.queue.length;
+  return h('button', { class: 'offbar', onclick: () => run(resume), 'aria-label': 'Senza rete: tocca per riprovare' }, icon(NO_NET, 18),
+    h('span', {}, 'Senza rete' + copyLabel()), n > 0 && h('em', {}, `${n} da inviare`));
+}
+
 function screen() {
   if (!api.signedIn || S.outside) return [loginScreen()];
-  if (!S.ready) return [h('main', {}, h('p', { class: 'center' }, 'Un attimo…'))];
+  if (!S.ready) return [h('main', {}, S.stuck
+    ? [h('p', { class: 'center' }, "Senza rete, e sul telefono non c'è ancora una copia: riprova quando c'è campo."), h('button', { class: 'btn alt', onclick: () => run(start) }, 'Riprova')]
+    : h('p', { class: 'center' }, 'Un attimo…'))];
   const body = { pista, calendario, gare, coach, scheda }[S.tab]();
-  return [h('main', {}, [body].flat(3).filter(Boolean)), nav()];
+  return [h('main', {}, offBar(), [body].flat(3).filter(Boolean)), nav()];
 }
 
 render();
 if (api.signedIn) run(start);
+addEventListener('online', () => { if (api.signedIn && S.me) run(resume); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && api.signedIn && S.ready && (S.offline || S.queue.length)) run(resume); });
 if ('serviceWorker' in navigator && !demo) navigator.serviceWorker.register('sw.js').catch(() => {});
