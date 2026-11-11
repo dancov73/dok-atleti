@@ -290,9 +290,32 @@ function pista() {
       h('button', { class: 'strip', onclick: () => go({ form: { what: 'wellness', a: {} } }) }, h('span', {}, h('small', {}, 'Mezzo minuto'), 'Come stai oggi?'), h('b', {}, '›')),
     drawTrack({ lanes, days, today: monday === mondayOf(today()) ? weekday(today()) : null, sel: S.sel, center, health: S.me.health_ok, onDay: i => go({ sel: i, form: null }) }),
     legend(lanes),
+    S.me.health_ok ? moodRow(day, !!away) : h('p', { class: 'lockline' }, icon(LOCK, 18), h('span', {}, '«Come stai» si apre quando la società registra il tuo consenso ai dati sulla salute.')),
     ...dayDetail(day, sessions, ev),
   ];
 }
+
+// ---------------------------------------------------------------- Come stai on the day touched (variant A of 11/11/2026)
+const SHORT = { sleep_quality: 'Sonno', fatigue: 'Fatica', soreness: 'Dolori', stress: 'Stress' };
+const moodOf = day => (S.wellness.get(mondayOf(day)) || []).find(x => x.day === day);
+const moodWords = m => [`${SHORT.sleep_quality} ${LEVELS.sleep_quality[1][m.sleep_quality - 1]?.toLowerCase()}`, `${LEVELS.sleep_band[1][m.sleep_band - 1]} ore`,
+  ...['fatigue', 'soreness', 'stress'].map(k => `${SHORT[k]} ${LEVELS[k][1][m[k] - 1]?.toLowerCase()}`), m.health > 0 && `dolore o malattia: ${m.health === 1 ? "un po'" : 'molto'}`].filter(Boolean).join(' · ');
+const openMood = (day, m) => go({ form: { what: 'wellness', day, a: m ? { mood: m.mood, sleep_quality: m.sleep_quality, sleep_band: m.sleep_band, fatigue: m.fatigue, soreness: m.soreness, stress: m.stress, health: m.health } : {} } });
+
+/** How they felt on the day touched, to change; a day of the last week with no answer, to answer. Today with no answer has its strip. */
+function moodRow(day, away) {
+  const now = today(), m = moodOf(day), name = day === now ? 'oggi' : DAY_NAMES[weekday(day)].toLowerCase();
+  if (day > now || day < add(now, -7)) return null;
+  const row = m ? h('button', { class: 'moodrow', onclick: () => openMood(day, m) }, h('span', { class: 'f' }, faceSvg(m.mood, 34)),
+      h('span', {}, day === now ? 'Come stai oggi' : `Come stavi ${name}`, h('small', {}, moodWords(m))), h('b', { class: 'link' }, 'Cambia ›'))
+    : day < now && !away ? h('button', { class: 'moodrow', onclick: () => openMood(day, null) }, h('span', {}, `Come stavi ${name}?`, h('small', {}, 'Non hai risposto')), h('b', { class: 'link' }, 'Rispondi ›'))
+    : null;
+  // another day of this week still without an answer, the nearest
+  const missing = Array.from({ length: 7 }, (_, i) => add(S.monday, 6 - i)).find(d => d !== day && d < now && d >= add(now, -7) && !moodOf(d)
+    && !(S.weeks.get(S.monday)?.events || []).some(e => isAway(e) && covers(e, d)));
+  return [row, m?.pending && pend(), missing && h('p', { class: 'sm hint' }, `${DAY_NAMES[weekday(missing)]} non hai risposto · tocca il giorno sulla pista per rispondere`)];
+}
+const faceSvg = (level, size) => { const s = el('svg', { viewBox: '0 0 60 60', width: size, height: size, 'aria-hidden': 'true' }); face(s, 30, 30, 28, level); return s; };
 
 function whistle(size) {
   const svg = el('svg', { viewBox: '0 0 24 24', width: size, height: size, 'aria-hidden': 'true' });
@@ -421,15 +444,16 @@ function absenceForm() {
 
 // ---------------------------------------------------------------- Come stai
 function wellnessForm() {
-  const a = S.form.a, done = Object.keys(LEVELS).every(k => a[k]) && a.mood && a.health != null;
+  const a = S.form.a, day = S.form.day || today(), done = Object.keys(LEVELS).every(k => a[k]) && a.mood && a.health != null;
   const set = (k, v) => { a[k] = v; render(); };
   const face4 = v => { const s = el('svg', { viewBox: '0 0 60 60', width: '100%', 'aria-hidden': 'true' }); face(s, 30, 30, 26, v); return s; };
   const save = () => run(async () => {
-    const how = await write('athlete_wellness', { p_day: today(), p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health });
+    const how = await write('athlete_wellness', { p_day: day, p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health });
     S.form = null; render(); toast(how === 'sent' ? 'Grazie! La tua faccina è sulla pista' : SAVED);
   });
   return [
-    h('button', { class: 'link', onclick: () => go({ form: null }) }, '‹ Annulla'), h('h1', {}, 'Come stai?'),
+    h('button', { class: 'link', onclick: () => go({ form: null }) }, '‹ Annulla'), h('h1', {}, day === today() ? 'Come stai?' : `Come stavi ${DAY_NAMES[weekday(day)].toLowerCase()}?`),
+    day !== today() && h('p', { class: 'sm' }, `${longDay(day)}: puoi rispondere o cambiare fino a una settimana dopo.`),
     h('label', { class: 'q' }, 'Umore'), h('div', { class: 'faces' }, [1, 2, 3, 4].map(v => h('button', { class: a.mood === v ? 'on' : '', 'aria-label': `Umore ${v} su 4`, onclick: () => set('mood', v) }, face4(v)))),
     Object.entries(LEVELS).map(([k, [label, words]]) => [h('label', { class: 'q' }, label),
       h('div', { class: 'picks' }, words.map((w, i) => h('button', { class: 'pick' + (a[k] === i + 1 ? ' on' : ''), onclick: () => set(k, i + 1) }, w)))]),
@@ -674,6 +698,7 @@ const icon = (d, size) => {
 };
 const NO_NET = ['M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.1 4.5 4.5 0 0 0 7 18z', 'M4 3l16 18'];
 const CLOCK = ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M12 7v5l3 2'];
+const LOCK = ['M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z', 'M8 11V8a4 4 0 0 1 8 0v3'];
 const pend = () => h('p', { class: 'pend' }, icon(CLOCK, 16), h('span', {}, "Sul telefono · parte appena c'è rete"));
 
 /** When what is on the screen was taken from the cloud. */

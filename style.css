@@ -113,3 +113,10 @@ input.code { font: 600 21px ui-monospace, "Noto Sans Mono", monospace; letter-sp
 .offbar em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; color: var(--orange-soft); border: 1px solid var(--orange-soft); border-radius: 9px; padding: 1px 8px; white-space: nowrap; }
 .pend { display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 14px; margin-top: -2px; }
 .pend svg { flex: none; }
+.lockline { display: flex; gap: 8px; align-items: flex-start; color: var(--faint); font-size: 14px; margin: 0 4px 8px; }
+.lockline svg { flex: none; }
+.moodrow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--box2); border-radius: 15px; padding: 9px 12px; margin-top: 8px; }
+.moodrow .f { flex: none; display: block; line-height: 0; }
+.moodrow small { display: block; font-size: 13px; }
+.moodrow .link { margin-left: auto; white-space: nowrap; font-weight: 400; }
+.hint { margin: 4px 4px 0; }
