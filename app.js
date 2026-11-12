@@ -141,7 +141,7 @@ async function start() {
   if (!demo) store.keepOn();
   told(await sendQueue());
   // what the athlete may want with no network later: the weeks around, the races, the last report
-  Promise.allSettled([week(KEPT()[0], true), week(KEPT()[2], true), races(), lastReport()]);
+  Promise.allSettled([week(KEPT()[0], true), week(KEPT()[2], true), races(), lastReport(), shape()]);
 }
 
 /** The phone holds the copies of one account, and the weeks around today only. */
@@ -464,13 +464,101 @@ function wellnessForm() {
   ];
 }
 
-// ---------------------------------------------------------------- Calendario
-function calendario() {
+// ---------------------------------------------------------------- Forma (was «Calendario»): the form, the week, the month
+function forma() {
   return [
-    h('div', { class: 'seg' }, [['week', 'Settimana'], ['month', 'Mese']].map(([m, t]) => h('button', { class: S.cal === m ? 'on' : '', onclick: () => { if (m === 'month') openMonth(S.month); else go({ cal: m }); } }, t))),
+    h('div', { class: 'seg' }, [['form', 'Forma'], ['week', 'Settimana'], ['month', 'Mese']].map(([m, t]) => h('button', { class: S.cal === m ? 'on' : '', onclick: () => { if (m === 'month') openMonth(S.month); else go({ cal: m }); } }, t))),
     h('div', { class: 'row' }),
-    ...(S.cal === 'week' ? straight() : monthView()),
+    ...(S.cal === 'form' ? formView() : S.cal === 'week' ? straight() : monthView()),
   ];
+}
+
+/** The form Dok published for them (docs/ruoli.md §12), or null; a cloud without the function yet (before c8) has none. */
+async function shape() {
+  S.fit = await fresh('form', () => api.rpc('athlete_form').catch(e => { if (e.status === 404) return null; throw e; }));
+}
+function openForma() {
+  run(async () => {
+    try { await shape(); } catch (e) { if (!isOffline(e)) throw e; }
+    go({ tab: 'forma', form: null, cal: S.fit ? 'form' : 'week' });
+  });
+}
+
+// The form (variant A of 12/11/2026): Dok computes it and chooses the words, here it is only drawn. No load in real units.
+const TREND = { up: ['In crescita', 'M6 32L24 22L34 26L52 9M41 8h12v12'], flat: ['Stabile', 'M6 20h46M42 10l10 10l-10 10'], down: ['In calo', 'M6 9L24 19L34 15L52 32M41 33h12v-12'] };
+const TIRED = { low: ['Bassa', 27], usual: ['Nel tuo solito', 80], above: ['Sopra il tuo solito', 133] };
+const LEVEL = { above: '▲ sopra', usual: '● nel solito', below: '▼ sotto' };
+
+function formView() {
+  const f = S.fit;
+  if (!f?.points?.length) return [h('p', { class: 'center' }, S.offline ? 'La tua forma si vede con la rete.' : 'La tua forma arriva quando il tuo coach la calcola in Dok.')];
+  const now = today(), mood = S.me.health_ok ? moodOf(now) : null, days = f.race ? Math.round((utc(f.race.date) - utc(now)) / 864e5) : -1;
+  const [trend, path] = TREND[f.trend] || TREND.flat, [tired, needle] = TIRED[f.fatigue] || TIRED.usual, lanes = lanesFor();
+  const arrow = el('svg', { viewBox: '0 0 60 40', width: 60, height: 40, 'aria-hidden': 'true' });
+  el('path', { d: path, fill: 'none', stroke: '#FF9900', 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, arrow);
+  const howAreYou = () => run(async () => { await week(mondayOf(now)); Object.assign(S, { tab: 'pista', monday: mondayOf(now), sel: weekday(now) }); openMood(now, mood); });
+  return [
+    h('h1', {}, 'La tua forma'),
+    days >= 0 && h('div', { class: 'racepill' }, h('b', {}, `⚑ ${f.race.title}`), h('span', {}, days === 0 ? 'oggi' : days === 1 ? 'domani' : `tra ${days} giorni`)),
+    h('div', { class: 'tiles' },
+      h('div', { class: 'tile' }, h('small', {}, 'Forma'), arrow, h('b', {}, trend)),
+      h('div', { class: 'tile' }, h('small', {}, 'Fatica'), gauge(needle), h('b', {}, tired)),
+      S.me.health_ok && h('button', { class: 'tile', onclick: howAreYou }, h('small', {}, 'Come stai'), mood ? faceSvg(mood.mood, 40) : h('span', { class: 'ask' }, '?'), h('b', {}, mood ? 'Oggi' : 'Rispondi'))),
+    h('div', { class: 'card' }, h('h2', {}, `Ultime ${f.points.length} settimane` + (days >= 0 ? ' e verso la gara' : '')), formChart(f),
+      h('div', { class: 'lg' }, h('span', {}, h('i', {}), 'forma dal lavoro fatto'), f.ahead?.length > 0 && h('span', {}, h('i', { class: 'dash' }), 'attesa, se segui il piano'), h('span', {}, h('i', { class: 'bar' }), 'fatica'))),
+    f.systems?.length > 0 && h('div', { class: 'card' }, h('h2', {}, 'Sistema per sistema, oggi'),
+      f.systems.filter(x => CHANNELS[x.channel]).map((x, i) => {
+        const [name, color] = CHANNELS[x.channel], bar = h('u', { bg: color }), n = lanes.indexOf(x.channel);
+        bar.style.width = `${Math.min(100, Math.max(4, x.form / 125 * 100))}%`;
+        return h('div', { class: 'sysrow' }, h('i', { bg: color }, String(n < 0 ? i + 1 : n + 1)), h('span', {}, name.split(' ')[0]), h('div', { class: 'lvl' }, bar, h('em', {})), h('small', {}, LEVEL[x.level] || ''));
+      }),
+      h('p', { class: 'sm' }, 'La riga bianca è il tuo solito.')),
+    h('p', { class: 'sm note2' }, 'È una stima dal lavoro che hai fatto e da quello in programma, non una misura. Cosa fare lo decide il tuo coach.'),
+    h('p', { class: 'sm note2' }, `Calcolata da Dok ${f.at === now ? 'oggi' : `il ${dayMonth(f.at)}`}.`),
+  ];
+}
+
+/** The word of the fatigue as a needle: left low, middle the usual, right above it. */
+function gauge(x) {
+  const cx = 30, cy = 36, r = 26, ang = t => Math.PI * (1 - t / 160);
+  const p = (t, rr = r) => [(cx + rr * Math.cos(ang(t))).toFixed(1), (cy - rr * Math.sin(ang(t))).toFixed(1)];
+  const svg = el('svg', { viewBox: '0 0 60 40', width: 60, height: 40, 'aria-hidden': 'true' });
+  const arc = (a, b, c) => el('path', { d: `M${p(a).join(' ')} A${r} ${r} 0 0 1 ${p(b).join(' ')}`, fill: 'none', stroke: c, 'stroke-width': 6, 'stroke-linecap': 'round' }, svg);
+  arc(0, 160, '#3D4653'); arc(53, 107, '#C4CAD1');
+  const [x2, y2] = p(x, r - 7);
+  el('line', { x1: cx, y1: cy, x2, y2, stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
+  el('circle', { cx, cy, r: 3.5, fill: '#fff' }, svg);
+  return svg;
+}
+
+/** The form from what was done (full line), the one expected to the race (dots), the fatigue (columns): by date, on the scale Dok gives. */
+function formChart(f) {
+  const pts = f.points, ahead = f.ahead || [], all = [...pts, ...ahead], now = pts[pts.length - 1], t = d => utc(d).getTime();
+  const t0 = t(pts[0].day), t1 = Math.max(t(all[all.length - 1].day), f.race ? t(f.race.date) : 0), X = d => 30 + (t(d) - t0) / Math.max(t1 - t0, 864e5) * 276;
+  const [lo, hi] = f.usual || [100, 100], values = all.map(x => x.form).concat(lo, hi), min = Math.min(...values) - 6, max = Math.max(...values) + 6;
+  const Y = v => 112 - (v - min) / (max - min) * 92, top = Math.max(130, ...all.map(x => x.fatigue || 0));
+  const xs = all.map(x => X(x.day)), width = Math.min(18, ...xs.slice(1).map((x, i) => (x - xs[i]) * 0.62));
+  const svg = el('svg', { viewBox: '0 0 336 196', class: 'chart', role: 'img', 'aria-label': 'La tua forma nelle ultime settimane, quella attesa e la fatica' });
+  if (hi > lo) {
+    el('rect', { x: 18, y: Y(hi), width: 306, height: Y(lo) - Y(hi), fill: '#fff', 'fill-opacity': 0.07, rx: 4 }, svg);
+    el('text', { x: 22, y: Y(hi) - 5, fill: '#8B939D', 'font-size': 10 }, svg, 'il tuo solito');
+  }
+  el('line', { x1: X(now.day), y1: 16, x2: X(now.day), y2: 172, stroke: '#56606B', 'stroke-dasharray': '2 3' }, svg);
+  if (f.race && t(f.race.date) >= t(now.day)) {
+    el('line', { x1: X(f.race.date), y1: 16, x2: X(f.race.date), y2: 172, stroke: '#FF9900', 'stroke-opacity': 0.6 }, svg);
+    el('text', { x: Math.min(X(f.race.date), 312), y: 11, fill: '#FFC36B', 'font-size': 11, 'text-anchor': 'middle' }, svg, '⚑ gara');
+  }
+  const line = (list, more) => el('polyline', { points: list.map(x => `${X(x.day).toFixed(1)},${Y(x.form).toFixed(1)}`).join(' '), fill: 'none', stroke: '#FF9900', 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', ...more }, svg);
+  line(pts, {});
+  if (ahead.length) line([now, ...ahead], { 'stroke-dasharray': '1 6' });
+  el('circle', { cx: X(now.day), cy: Y(now.form), r: 5.5, fill: '#FF9900', stroke: '#10141A', 'stroke-width': 2 }, svg);
+  const column = (x, look) => { const tall = (x.fatigue || 0) / top * 38; el('rect', { x: X(x.day) - width / 2, y: 170 - tall, width, height: tall, rx: 3, ...look }, svg); };
+  pts.forEach(x => column(x, { fill: '#6F7B8A' }));
+  ahead.forEach(x => column(x, { fill: 'none', stroke: '#6F7B8A', 'stroke-dasharray': '3 3' }));
+  const weeks = Math.round((t(now.day) - t0) / (7 * 864e5));
+  if (weeks > 0) el('text', { x: X(pts[0].day), y: 188, fill: '#8B939D', 'font-size': 10, 'text-anchor': 'middle' }, svg, `${weeks} sett. fa`);
+  el('text', { x: X(now.day), y: 188, fill: '#fff', 'font-size': 10, 'text-anchor': 'middle' }, svg, 'oggi');
+  return svg;
 }
 
 function straight() {
@@ -635,13 +723,13 @@ function scheda() {
 // ---------------------------------------------------------------- the frame
 const ICONS = {
   pista: ['Pista', 'M6 6h12a6 6 0 0 1 0 12H6A6 6 0 0 1 6 6zM9 10h6a2 2 0 0 1 0 4H9a2 2 0 0 1 0-4z'],
-  calendario: ['Calendario', 'M3 5h18v16H3zM3 10h18M8 3v4M16 3v4'],
+  forma: ['Forma', 'M3 13h4l3-7 4 12 3-5h4'],
   gare: ['Gare', 'M6 21V4M6 5h12l-3 4 3 4H6'],
   coach: ['Coach', 'M3 5h18v12H9l-5 4v-4H3z'],
   scheda: ['Scheda', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7'],
 };
 function nav() {
-  const open = { pista: () => go({ tab: 'pista', form: null }), calendario: () => go({ tab: 'calendario', form: null }), gare: openGare, coach: () => run(async () => { await messages(); go({ tab: 'coach' }); }), scheda: openScheda };
+  const open = { pista: () => go({ tab: 'pista', form: null }), forma: openForma, gare: openGare, coach: () => run(async () => { await messages(); go({ tab: 'coach' }); }), scheda: openScheda };
   const fresh = S.messages.filter(m => !m.seen).length;
   return h('nav', { class: 'nav', 'aria-label': 'Sezioni' }, Object.entries(ICONS).map(([k, [label, d]]) => {
     const svg = el('svg', { viewBox: '0 0 24 24', width: 24, height: 24, 'aria-hidden': 'true' });
@@ -703,7 +791,7 @@ const pend = () => h('p', { class: 'pend' }, icon(CLOCK, 16), h('span', {}, "Sul
 
 /** When what is on the screen was taken from the cloud. */
 function copyLabel() {
-  const at = { gare: S.at.races, coach: S.at.messages, scheda: S.at.report }[S.tab] ?? S.at[`week:${S.monday}`];
+  const at = { gare: S.at.races, coach: S.at.messages, scheda: S.at.report, forma: S.cal === 'form' ? S.at.form : null }[S.tab] ?? S.at[`week:${S.monday}`];
   if (!at) return '';
   const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(at), o = { timeZone: 'Europe/Rome' };
   const time = new Intl.DateTimeFormat('it-IT', { ...o, hour: '2-digit', minute: '2-digit' }).format(at);
@@ -725,7 +813,7 @@ function screen() {
   if (!S.ready) return [h('main', {}, S.stuck
     ? [h('p', { class: 'center' }, "Senza rete, e sul telefono non c'è ancora una copia: riprova quando c'è campo."), h('button', { class: 'btn alt', onclick: () => run(start) }, 'Riprova')]
     : h('p', { class: 'center' }, 'Un attimo…'))];
-  const body = { pista, calendario, gare, coach, scheda }[S.tab]();
+  const body = { pista, forma, gare, coach, scheda }[S.tab]();
   return [h('main', {}, offBar(), [body].flat(3).filter(Boolean)), nav()];
 }
 

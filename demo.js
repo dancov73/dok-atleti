@@ -61,6 +61,16 @@ export class Demo {
         events: this.events.filter(e => e.start <= a.p_to && (e.end || e.start) >= a.p_from),
       };
       case 'athlete_results': return { races: this.races };
+      // the form as Dok would publish it (docs/ruoli.md §12); ?demo=1&forma=no: not published yet
+      case 'athlete_form': {
+        if (new URLSearchParams(location.search).get('forma') === 'no') return null;
+        const t = this.today, race = this.events[0], form = [84, 89, 95, 99, 103, 100, 105, 109], tired = [70, 95, 112, 88, 124, 66, 98, 84];
+        return { id: 'demo', athlete: 'demo', v: 1, model: 'demo', at: t, trend: 'up', fatigue: 'usual', usual: [92, 108],
+          points: form.map((f, i) => ({ day: add(t, (i - 7) * 7), form: f, fatigue: tired[i] })),
+          ahead: [{ day: add(t, 7), form: 112, fatigue: 62 }, { day: race.start, form: 110, fatigue: 34 }].filter((x, i) => i === 1 || add(x.day, 3) <= race.start),
+          race: { title: race.title, date: race.start },
+          systems: [['ala', 112, 'above'], ['lat', 97, 'usual'], ['aer', 86, 'below'], ['for', 104, 'usual'], ['tec', 100, 'usual']].map(([channel, f, level]) => ({ channel, form: f, level })) };
+      }
       case 'athlete_messages': return this.messages;
       case 'athlete_message_seen': this.messages.find(m => m.id === a.p_id).seen = true; return null;
       case 'athlete_mark': Object.assign(this.sessions.find(s => s.id === a.p_workout), { did: a.p_did, rpe: a.p_rpe, note: a.p_note }); return null;
