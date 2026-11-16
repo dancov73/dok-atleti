@@ -356,32 +356,51 @@ function stops(view) {
   return h('div', { class: 'stops' }, list);
 }
 
-// ---------------------------------------------------------------- the exercises of the gym (variant A of 16/11/2026, docs/ruoli.md §13)
-// Dok puts in the stop the drawing and the video the coach chose for each exercise; the drawings are files of this site, the
-// videos and the pages of wger open out of the app. Only http and https links, and only drawings of the folder esercizi/.
+// ---------------------------------------------------------------- the exercises of the gym (docs/ruoli.md §13)
+// Dok puts in the stop the picture and the video the coach chose for each exercise (view version 5): the small picture and the
+// phases of the movement, files of this site; the videos and the pages of wger open out of the app. Only http and https links,
+// and only pictures of the folder esercizi/.
 const web = u => typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null;
-const ownDrawing = p => typeof p === 'string' && /^esercizi\/[a-z0-9_]+\.png$/.test(p) ? p : null;
+const ownPicture = p => typeof p === 'string' && /^esercizi\/[a-z0-9_]+(-[1-9])?\.webp$/.test(p) ? p : null;
 
-// An exercise with no drawing has no box: the name takes the whole row (variant A of 16/11/2026).
+// An exercise with no picture has no box: the name takes the whole row (variant A of 16/11/2026).
 function exercises(items) {
-  const credits = [...new Set(items.filter(x => ownDrawing(x.image)).map(x => x.credit).filter(Boolean))];
+  const credits = [...new Set(items.filter(x => ownPicture(x.image)).map(x => x.credit).filter(Boolean))];
   return h('div', { class: 'exlist' }, items.map(x => h('div', { class: 'exrow' },
-      ownDrawing(x.image) && h('button', { class: 'thumb', 'aria-label': `Disegno: ${x.name}`, onclick: () => bigDrawing(x) }, h('img', { src: x.image, alt: '' })),
+      ownPicture(x.image) && h('button', { class: 'thumb', 'aria-label': `Immagine: ${x.name}`, onclick: () => bigPicture(x) }, h('img', { src: x.image, alt: '' })),
       h('span', {}, h('b', {}, x.name), x.dose && h('small', {}, x.dose)),
       web(x.video) && h('a', { class: 'vid', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Video'))),
-    credits.length > 0 && h('p', { class: 'credit' }, `Disegni: ${credits.join('; ')} · tocca un disegno per ingrandirlo`));
+    credits.length > 0 && h('p', { class: 'credit' }, `Immagini: ${credits.join('; ')} · tocca un'immagine per ingrandirla`));
 }
 
-/** The drawing large, with the video and the page on wger. */
-function bigDrawing(x) {
-  const close = () => box.remove();
+// one phase after the other (variant B of 16/11/2026): this long each, the fade in style.css
+const PHASE_MS = 1100;
+
+/** The picture large: its phases one after the other, by themselves; a tap stops them and starts them again. With the video and
+ * the page on wger. Who asked the phone for less motion sees them still, and moves from one to the other with the dots. */
+function bigPicture(x) {
+  const frames = (Array.isArray(x.frames) ? x.frames.map(ownPicture).filter(Boolean) : []).slice(0, 9);
+  if (!frames.length) frames.push(ownPicture(x.image));
+  const imgs = frames.map((f, i) => h('img', { src: f, alt: i ? '' : x.name, class: i ? '' : 'on' }));
+  const dots = frames.map((_, i) => h('button', { class: i ? '' : 'on', 'aria-label': `Fase ${i + 1} di ${frames.length}`, onclick: () => { stop(); show(i); } }));
+  const say = h('span', {});
+  let at = 0, timer = null;
+  const show = i => { at = i; imgs.forEach((m, k) => m.classList.toggle('on', k === i)); dots.forEach((d, k) => d.classList.toggle('on', k === i)); };
+  const tell = () => { say.textContent = timer ? 'si muove da sola · tocca per fermarla' : 'ferma · tocca per farla ripartire'; };
+  const start = () => { if (!timer) timer = setInterval(() => show((at + 1) % frames.length), PHASE_MS); tell(); };
+  const stop = () => { clearInterval(timer); timer = null; tell(); };
+  const close = () => { stop(); box.remove(); };
+  const many = frames.length > 1;
   const box = h('div', { class: 'big-drawing', role: 'dialog', 'aria-label': x.name, onclick: e => { if (e.target === box) close(); } },
-    h('div', { class: 'sheet' }, h('div', { class: 'pic' }, h('img', { src: ownDrawing(x.image), alt: x.name })), h('h2', {}, x.name), x.dose && h('p', { class: 'dose' }, x.dose),
+    h('div', { class: 'sheet' }, h('div', { class: 'pic', onclick: () => many && (timer ? stop() : start()) }, imgs),
+      many && h('div', { class: 'phases' }, dots, say),
+      h('h2', {}, x.name), x.dose && h('p', { class: 'dose' }, x.dose),
       web(x.video) && h('a', { class: 'btn main', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Guarda come si fa'),
       web(x.page) && h('a', { class: 'btn alt', href: web(x.page), target: '_blank', rel: 'noopener noreferrer' }, 'Scheda su wger'),
-      x.credit && h('p', { class: 'credit' }, `Disegno: ${x.credit}, da wger.${web(x.video) ? ' Il video si apre fuori da Dok Athlon.' : ''}`),
+      x.credit && h('p', { class: 'credit' }, `Immagine: ${x.credit}, fatta con l'IA e controllata dal coach.${web(x.video) ? ' Il video si apre fuori da Dok Athlon.' : ''}`),
       h('button', { class: 'link', onclick: close }, 'Chiudi')));
   document.body.append(box);
+  if (many && !matchMedia('(prefers-reduced-motion: reduce)').matches) start(); else tell();
 }
 
 const DID = { DONE: 'Fatta', PART: 'Fatta in parte', ABSENT: 'Non fatta', OTHER: 'Modificata' };

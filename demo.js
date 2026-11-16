@@ -4,14 +4,15 @@ import { offline } from './api.js';
 
 const add = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const stop = (title, detail, channel, n = 0) => ({ title, detail, channel, squares: Array(n).fill(channel) });
-// a block of the gym as Dok draws it (view version 4): the exercises with the drawing and the video the coach chose
-const item = (name, dose, image, credit, video, page) => ({ name, dose, image, credit, video, page });
-const EVERKINETIC = 'Everkinetic · CC-BY-SA 3.0';
-const gym = { ...stop('Forza', 'Squat frontale 3×5 50 kg\nPanca 3×6 40 kg\nHip thrust 3×6 40 kg\nPlank 3′', 'for'), items: [
-  item('Squat frontale', '3×5 50 kg', 'esercizi/front_squat.png', EVERKINETIC, 'https://musclewiki.com/', 'https://wger.de/it/exercise/257/view/'),
-  item('Panca', '3×6 40 kg', 'esercizi/bench_press.png', EVERKINETIC, null, 'https://wger.de/it/exercise/73/view/'),
-  item('Hip thrust', '3×6 40 kg', null, null, 'https://musclewiki.com/', 'https://wger.de/it/exercise/294/view/'),
-  item('Plank', '3′', 'esercizi/plank.png', 'utkb · CC-BY-SA 4.0', null, 'https://wger.de/it/exercise/458/view/'),
+// a block of the gym as Dok draws it (view version 5): the exercises with the picture, its phases and the video the coach chose
+const CC0 = 'Open Exercise Illustrations · CC0';
+const item = (name, dose, pic, phases, video, page) => ({ name, dose, image: pic ? `esercizi/${pic}.webp` : null,
+  frames: pic ? Array.from({ length: phases }, (_, i) => `esercizi/${pic}-${i + 1}.webp`) : [], credit: pic ? CC0 : null, video, page });
+const gym = { ...stop('Forza', 'Girata 3×3 50 kg\nPanca 3×6 40 kg\nHip thrust 3×6 40 kg\nPlank 3′', 'for'), items: [
+  item('Girata', '3×3 50 kg', 'power_clean', 3, 'https://musclewiki.com/', 'https://wger.de/it/exercise/683/view/'),
+  item('Panca', '3×6 40 kg', 'bench_press', 2, null, 'https://wger.de/it/exercise/73/view/'),
+  item('Hip thrust', '3×6 40 kg', null, 0, 'https://musclewiki.com/', 'https://wger.de/it/exercise/294/view/'),
+  item('Plank', '3′', 'plank', 1, null, 'https://wger.de/it/exercise/458/view/'),
 ] };
 
 export class Demo {
