@@ -17,7 +17,7 @@ export class Demo {
     this.sessions = [
       session('s1', 0, 'Velocità: partenze', ['ala', 'tec'], speed, 'DONE'),
       session('s2', 1, 'Resistenza', ['lat'], [stop('Riscaldamento', "Andature 15'", 'tec'), stop('3 × 150 m al 90%', "recupero 6'", 'lat', 3), stop('Defaticamento', '', '')], 'DONE'),
-      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [stop('Forza', 'Hip thrust 3×6 40 kg · Squat 3×5 50 kg', 'for'), stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }),
+      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [stop('Forza', 'Hip thrust 3×6 40 kg\nSquat 3×5 50 kg\nPlank 3′', 'for'), stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }),
       session('s4', 3, 'Corsa facile', ['aer'], [stop('Corsa', "30' di corsa lenta", 'aer')], 'DONE'),
       session('s5', 4, 'Velocità: inseguimenti', ['ala', 'tec'], speed),
       session('s6', 5, 'Corsa e forza', ['aer', 'for'], [stop('Corsa', "25' di corsa lenta", 'aer'), stop('Circuito di forza', "3 giri · recupero 2'", 'for')]),

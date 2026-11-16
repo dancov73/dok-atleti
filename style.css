@@ -35,7 +35,7 @@ button:focus-visible, .hit:focus-visible, input:focus-visible, textarea:focus-vi
 .stop { display: flex; gap: 13px; position: relative; margin-bottom: 10px; }
 .stop > em { flex: none; width: 32px; height: 32px; line-height: 32px; border-radius: 50%; font-style: normal; text-align: center; font-weight: 600; color: #fff; }
 .stop b { display: block; font-weight: 600; }
-.stop small { display: block; margin-bottom: 4px; }
+.stop small { display: block; margin-bottom: 4px; white-space: pre-line; }
 .finish { background: repeating-conic-gradient(#fff 0 25%, var(--bg) 0 50%) 0 0 / 12px 12px; border: 2px solid #fff; }
 .squares { display: flex; flex-wrap: wrap; gap: 6px; }
 .squares i { width: 21px; height: 21px; border-radius: 5px; display: block; }
