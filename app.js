@@ -361,13 +361,12 @@ function stops(view) {
 // videos and the pages of wger open out of the app. Only http and https links, and only drawings of the folder esercizi/.
 const web = u => typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null;
 const ownDrawing = p => typeof p === 'string' && /^esercizi\/[a-z0-9_]+\.png$/.test(p) ? p : null;
-const DUMBBELL = ['M3 10v4', 'M6 8v8', 'M18 8v8', 'M21 10v4', 'M6 12h12'];
 
+// An exercise with no drawing has no box: the name takes the whole row (variant A of 16/11/2026).
 function exercises(items) {
   const credits = [...new Set(items.filter(x => ownDrawing(x.image)).map(x => x.credit).filter(Boolean))];
   return h('div', { class: 'exlist' }, items.map(x => h('div', { class: 'exrow' },
-      ownDrawing(x.image) ? h('button', { class: 'thumb', 'aria-label': `Disegno: ${x.name}`, onclick: () => bigDrawing(x) }, h('img', { src: x.image, alt: '' }))
-        : h('span', { class: 'thumb none' }, icon(DUMBBELL, 26)),
+      ownDrawing(x.image) && h('button', { class: 'thumb', 'aria-label': `Disegno: ${x.name}`, onclick: () => bigDrawing(x) }, h('img', { src: x.image, alt: '' })),
       h('span', {}, h('b', {}, x.name), x.dose && h('small', {}, x.dose)),
       web(x.video) && h('a', { class: 'vid', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Video'))),
     credits.length > 0 && h('p', { class: 'credit' }, `Disegni: ${credits.join('; ')} · tocca un disegno per ingrandirlo`));
