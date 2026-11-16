@@ -350,10 +350,39 @@ function called(e) {
 
 function stops(view) {
   const list = view.stops.map((st, i) => h('div', { class: 'stop' }, h('em', { bg: CHANNELS[st.channel]?.[1] || '#7D8590' }, String(i + 1)),
-    h('div', {}, h('b', {}, st.title), st.detail && h('small', {}, st.detail),
+    h('div', {}, h('b', {}, st.title), st.items?.length ? exercises(st.items) : st.detail && h('small', {}, st.detail),
       st.squares?.length ? h('div', { class: 'squares' }, st.squares.map(c => h('i', { bg: CHANNELS[c]?.[1] || '#7D8590' }))) : null)));
   list.push(h('div', { class: 'stop' }, h('em', { class: 'finish' }), h('div', {}, h('b', {}, 'Arrivo'))));
   return h('div', { class: 'stops' }, list);
+}
+
+// ---------------------------------------------------------------- the exercises of the gym (variant A of 16/11/2026, docs/ruoli.md §13)
+// Dok puts in the stop the drawing and the video the coach chose for each exercise; the drawings are files of this site, the
+// videos and the pages of wger open out of the app. Only http and https links, and only drawings of the folder esercizi/.
+const web = u => typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null;
+const ownDrawing = p => typeof p === 'string' && /^esercizi\/[a-z0-9_]+\.png$/.test(p) ? p : null;
+const DUMBBELL = ['M3 10v4', 'M6 8v8', 'M18 8v8', 'M21 10v4', 'M6 12h12'];
+
+function exercises(items) {
+  const credits = [...new Set(items.filter(x => ownDrawing(x.image)).map(x => x.credit).filter(Boolean))];
+  return h('div', { class: 'exlist' }, items.map(x => h('div', { class: 'exrow' },
+      ownDrawing(x.image) ? h('button', { class: 'thumb', 'aria-label': `Disegno: ${x.name}`, onclick: () => bigDrawing(x) }, h('img', { src: x.image, alt: '' }))
+        : h('span', { class: 'thumb none' }, icon(DUMBBELL, 26)),
+      h('span', {}, h('b', {}, x.name), x.dose && h('small', {}, x.dose)),
+      web(x.video) && h('a', { class: 'vid', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Video'))),
+    credits.length > 0 && h('p', { class: 'credit' }, `Disegni: ${credits.join('; ')} · tocca un disegno per ingrandirlo`));
+}
+
+/** The drawing large, with the video and the page on wger. */
+function bigDrawing(x) {
+  const close = () => box.remove();
+  const box = h('div', { class: 'big-drawing', role: 'dialog', 'aria-label': x.name, onclick: e => { if (e.target === box) close(); } },
+    h('div', { class: 'sheet' }, h('div', { class: 'pic' }, h('img', { src: ownDrawing(x.image), alt: x.name })), h('h2', {}, x.name), x.dose && h('p', { class: 'dose' }, x.dose),
+      web(x.video) && h('a', { class: 'btn main', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Guarda come si fa'),
+      web(x.page) && h('a', { class: 'btn alt', href: web(x.page), target: '_blank', rel: 'noopener noreferrer' }, 'Scheda su wger'),
+      x.credit && h('p', { class: 'credit' }, `Disegno: ${x.credit}, da wger.${web(x.video) ? ' Il video si apre fuori da Dok Athlon.' : ''}`),
+      h('button', { class: 'link', onclick: close }, 'Chiudi')));
+  document.body.append(box);
 }
 
 const DID = { DONE: 'Fatta', PART: 'Fatta in parte', ABSENT: 'Non fatta', OTHER: 'Modificata' };

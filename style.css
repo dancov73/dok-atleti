@@ -142,3 +142,23 @@ input.code { font: 600 21px ui-monospace, "Noto Sans Mono", monospace; letter-sp
 .lvl u { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; }
 .lvl em { position: absolute; left: 80%; top: -4px; bottom: -4px; width: 2px; background: #fff; }
 .note2 { margin: 12px 2px 0; color: var(--faint); }
+.exlist { margin-top: 4px; }
+.exrow { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+.exrow:first-child { border-top: 0; }
+.thumb { flex: none; width: 54px; height: 54px; border-radius: 10px; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.thumb.none { background: var(--box); color: var(--faint); }
+.exrow span { flex: 1; min-width: 0; }
+.exrow b { display: block; font-weight: 600; }
+.exrow small { display: block; margin: 0; }
+.vid { flex: none; border: 1.5px solid var(--orange-soft); color: var(--orange-soft); border-radius: 14px; padding: 4px 10px; font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.credit { font-size: 11px; color: var(--faint); margin-top: 4px; }
+.big-drawing { position: fixed; inset: 0; z-index: 9; background: rgba(0, 0, 0, .55); display: flex; align-items: flex-end; }
+.big-drawing .sheet { width: 100%; max-width: 520px; margin: 0 auto; background: var(--box2); border-radius: 18px 18px 0 0; padding: 14px 16px calc(18px + env(safe-area-inset-bottom)); }
+.big-drawing .pic { background: #fff; border-radius: 14px; height: 240px; display: flex; align-items: center; justify-content: center; }
+.big-drawing .pic img { max-height: 226px; max-width: 92%; }
+.big-drawing h2 { margin: 12px 0 0; font-size: 21px; }
+.big-drawing .dose { margin: 4px 0 8px; color: var(--muted); }
+.big-drawing a.btn { margin-top: 8px; text-decoration: none; }
+.big-drawing .link { display: block; margin: 12px auto 0; }
+.stop > div { min-width: 0; }

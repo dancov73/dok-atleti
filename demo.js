@@ -4,6 +4,15 @@ import { offline } from './api.js';
 
 const add = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const stop = (title, detail, channel, n = 0) => ({ title, detail, channel, squares: Array(n).fill(channel) });
+// a block of the gym as Dok draws it (view version 4): the exercises with the drawing and the video the coach chose
+const item = (name, dose, image, credit, video, page) => ({ name, dose, image, credit, video, page });
+const EVERKINETIC = 'Everkinetic · CC-BY-SA 3.0';
+const gym = { ...stop('Forza', 'Squat frontale 3×5 50 kg\nPanca 3×6 40 kg\nHip thrust 3×6 40 kg\nPlank 3′', 'for'), items: [
+  item('Squat frontale', '3×5 50 kg', 'esercizi/front_squat.png', EVERKINETIC, 'https://musclewiki.com/', 'https://wger.de/it/exercise/257/view/'),
+  item('Panca', '3×6 40 kg', 'esercizi/bench_press.png', EVERKINETIC, null, 'https://wger.de/it/exercise/73/view/'),
+  item('Hip thrust', '3×6 40 kg', null, null, 'https://musclewiki.com/', 'https://wger.de/it/exercise/294/view/'),
+  item('Plank', '3′', 'esercizi/plank.png', 'utkb · CC-BY-SA 4.0', null, 'https://wger.de/it/exercise/458/view/'),
+] };
 
 export class Demo {
   constructor(today, login = false) {
@@ -17,7 +26,7 @@ export class Demo {
     this.sessions = [
       session('s1', 0, 'Velocità: partenze', ['ala', 'tec'], speed, 'DONE'),
       session('s2', 1, 'Resistenza', ['lat'], [stop('Riscaldamento', "Andature 15'", 'tec'), stop('3 × 150 m al 90%', "recupero 6'", 'lat', 3), stop('Defaticamento', '', '')], 'DONE'),
-      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [stop('Forza', 'Hip thrust 3×6 40 kg\nSquat 3×5 50 kg\nPlank 3′', 'for'), stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }),
+      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [gym, stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }),
       session('s4', 3, 'Corsa facile', ['aer'], [stop('Corsa', "30' di corsa lenta", 'aer')], 'DONE'),
       session('s5', 4, 'Velocità: inseguimenti', ['ala', 'tec'], speed),
       session('s6', 5, 'Corsa e forza', ['aer', 'for'], [stop('Corsa', "25' di corsa lenta", 'aer'), stop('Circuito di forza', "3 giri · recupero 2'", 'for')]),

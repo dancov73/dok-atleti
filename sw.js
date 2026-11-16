@@ -1,8 +1,10 @@
 // The pages of the app stay on the phone, so it opens at once, also with no network or a weak one (docs/ruoli.md §11). Never the data:
 // those are in IndexedDB (store.js). The app opens from this copy; at each opening the browser checks this file on the network, and a
 // new CACHE fetches all the pages together in the background: the phone uses them from the next opening.
-const CACHE = 'dok-7';
-const SHELL = ['.', 'index.html', 'style.css', 'app.js', 'api.js', 'store.js', 'track.js', 'demo.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/lockup.svg'];
+const CACHE = 'dok-8';
+const SHELL = ['.', 'index.html', 'style.css', 'app.js', 'api.js', 'store.js', 'track.js', 'demo.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/lockup.svg',
+  // the drawings of the exercises of the gym (docs/ruoli.md §13): there with no network too
+  ...['front_squat', 'good_morning', 'bench_press', 'row', 'step_up', 'pull_up', 'plank', 'hollow', 'kettlebell_swing'].map(n => `esercizi/${n}.png`)];
 // the pages of the coaches live on the same site and never come from here (Registro 06/11/2026)
 const NOT_HERE = '/allenatori';
 
