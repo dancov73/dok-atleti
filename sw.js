@@ -1,7 +1,7 @@
 // The pages of the app stay on the phone, so it opens at once, also with no network or a weak one (docs/ruoli.md §11). Never the data:
 // those are in IndexedDB (store.js). The app opens from this copy; at each opening the browser checks this file on the network, and a
 // new CACHE fetches all the pages together in the background: the phone uses them from the next opening.
-const CACHE = 'dok-10';
+const CACHE = 'dok-11';
 const SHELL = ['.', 'index.html', 'style.css', 'app.js', 'api.js', 'store.js', 'track.js', 'demo.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/lockup.svg'];
 // The pictures of the exercises of the gym (docs/ruoli.md §13), the small one and the phases of each: there with no network too. They
 // are in a cache of their own, fetched again only when they change (a new PICTURES), not at each new version of the pages: about

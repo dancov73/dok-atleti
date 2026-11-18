@@ -409,7 +409,7 @@ function sessionBox(s, day, away) {
   const note = S.messages.find(m => m.kind === 'SESSION' && m.workout === s.id), f = S.form?.id === s.id ? S.form : null, past = day <= today();
   return h('div', { class: 'det' },
     h('small', {}, longDay(day) + (day > today() ? ' · programmata' : '')), h('div', { class: 'title' }, s.title || 'Seduta'),
-    (s.view?.channels || []).map(c => h('span', { class: 'chip', bg: CHANNELS[c]?.[1] }, CHANNELS[c]?.[0])),
+    (s.view?.channels || []).map(c => h('span', { class: 'chip sys', bg: CHANNELS[c]?.[1] }, CHANNELS[c]?.[0])),
     note && h('div', { class: 'note' }, whistle(20), h('div', {}, h('small', {}, `Da ${note.from || 'Coach'}`), note.text)),
     s.view?.note && h('p', {}, s.view.note),
     s.view?.stops?.length ? stops(s.view) : h('div', { class: 'text' }, s.text),

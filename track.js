@@ -1,9 +1,11 @@
 // The track of the web app (drawings approved on 30/10/2026, docs/ruoli.md §8): a lane for each system, the health lane wider and last,
 // the seven days around the lap. Monday starts on the line of the 400 m, at the end of the home straight, and the lap runs counter-clockwise.
 
+// The colours of the systems are those of Dok (season/LoadChannel.kt, chosen by the user on 18/11/2026): bright ones, so what is written
+// on them is dark. Soglia and Intenso are lighter tones of the green of the aerobic.
 export const CHANNELS = {
-  ala: ['Alattacido', '#3987E5'], lat: ['Lattacido', '#D95926'], vo2: ['Intenso', '#B0488C'], sog: ['Soglia', '#A8B820'],
-  aer: ['Aerobico', '#199E70'], for: ['Forza e salti', '#C98500'], tec: ['Tecnica', '#9085E9'],
+  ala: ['Alattacido', '#F5F03C'], lat: ['Lattacido', '#E35DF5'], vo2: ['Intenso', '#D6FBCE'], sog: ['Soglia', '#99EE86'],
+  aer: ['Aerobico', '#58D936'], for: ['Forza e salti', '#46FBFB'], tec: ['Tecnica', '#8C8C8C'],
 };
 export const HEALTH = '#E96B9A';
 const DAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
