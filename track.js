@@ -8,6 +8,58 @@ export const CHANNELS = {
   aer: ['Aerobico', '#58D936'], for: ['Forza e salti', '#46FBFB'], tec: ['Tecnica', '#8C8C8C'],
 };
 export const HEALTH = '#E96B9A';
+
+/**
+ * The profile of a session (view version 6): Dok lays it out and publishes the numbers, here it is only drawn. Across, ten-thousandths
+ * of the width; heights, hundredths. The runs are bars as high as their intensity over the low band of their recoveries, warm-up and
+ * cool-down ramps, gym and technique columns with a brick a set, as wide as the set is heavy.
+ */
+export function drawProfile(p) {
+  const W = 300, TOP = 16, H = 72, base = TOP + H, below = p.parts.some(q => q.k === 'runs' && q.rec) ? 30 : 16;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${base + below}`, class: 'profile', role: 'img', 'aria-label': `Profilo della seduta: ${p.min} minuti` });
+  const X = v => v / 10000 * W, Y = l => base - l / 100 * H, colour = c => CHANNELS[c]?.[1] || '#7D8590';
+  const words = (x, y, t, fill, size, anchor = 'middle') => el('text', { x, y, fill, 'font-size': size, 'text-anchor': anchor }, svg, t);
+  p.ticks.forEach((t, i) => {
+    el('line', { x1: X(t), y1: TOP, x2: X(t), y2: base, stroke: '#2A313B', 'stroke-width': 1 }, svg);
+    el('line', { x1: X(t), y1: base, x2: X(t), y2: base + 3, stroke: '#5B6573', 'stroke-width': 1 }, svg);
+    if (X(t) + 20 <= W) words(X(t) + 2, base + 13, `${i * 15}′`, '#8B939D', 9.5, 'start');
+  });
+  const rows = Math.max(p.rows || 4, 4), gap = 1.6, high = (H * 0.92 - (rows - 1) * gap) / rows;
+  let free = 0, low = 0;
+  const over = (q, t) => {
+    const w = t.length * 5.6, x = Math.min(Math.max(X(q.x + q.w / 2), w / 2), W - w / 2);
+    if (x - w / 2 >= free && (q.k === 'runs' || w <= X(q.w) + 28)) { words(x, 10, t, '#E4E7EB', 10.5); free = x + w / 2 + 4; }
+  };
+  for (const q of p.parts) {
+    const x = X(q.x), w = X(q.w);
+    if (q.k === 'warm') el('path', { d: `M${x} ${base} L${x} ${Y(14)} L${x + w} ${Y(38)} L${x + w} ${base} Z`, fill: '#8C8C8C', 'fill-opacity': 0.7 }, svg);
+    else if (q.k === 'cool') el('path', { d: `M${x} ${base} L${x} ${Y(22)} L${x + w} ${Y(8)} L${x + w} ${base} Z`, fill: '#6B7480', 'fill-opacity': 0.7 }, svg);
+    else if (q.k === 'steady') el('rect', { x, y: Y(q.l), width: w, height: base - Y(q.l), rx: 1.2, fill: colour(q.c) }, svg);
+    else if (q.k === 'runs') {
+      el('rect', { x, y: Y(9), width: w, height: base - Y(9), fill: colour(q.c), 'fill-opacity': 0.28 }, svg);
+      for (const [bx, bw, l, c] of q.bars) el('rect', { x: X(bx), y: Y(l), width: X(bw), height: base - Y(l), rx: 1.2, fill: colour(c) }, svg);
+      if (q.label) over(q, q.label);
+      if (q.rec) {
+        // the words of the recovery under their runs, unless they would run into those of the runs before
+        const rw = q.rec.length * 4.8, rx = Math.min(Math.max(x + w / 2, rw / 2), W - rw / 2);
+        if (rx - rw / 2 >= low) { words(rx, base + 25, q.rec, '#8B939D', 9.5); low = rx + rw / 2 + 3; }
+      }
+    } else if (q.k === 'cols') {
+      for (const it of q.items) {
+        const span = X(it.w), cw = Math.max(4, it.t ? span - 4 : Math.min(span - 4, 24)), cx = X(it.x) + (span - cw) / 2;
+        it.s.forEach((level, i) => {
+          const y = base - (i + 1) * (high + gap) + gap;
+          if (q.c === 'tec' || level >= 3) el('rect', { x: cx, y, width: cw, height: high, rx: 1.2, fill: colour(q.c) }, svg);
+          else if (level > 0) el('rect', { x: cx + cw * (1 - level / 3) / 2, y, width: cw * level / 3, height: high, rx: 1.2, fill: colour(q.c) }, svg);
+          else el('rect', { x: cx + cw / 4, y: y + high * 0.36, width: cw / 2, height: Math.max(1.2, high * 0.28), rx: 1, fill: colour(q.c), 'fill-opacity': 0.75 }, svg);
+        });
+      }
+      if (q.title) over(q, q.title);
+    }
+  }
+  el('line', { x1: 0, y1: base, x2: W, y2: base, stroke: '#56606B', 'stroke-width': 1 }, svg);
+  return svg;
+}
 const DAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
 const TRACK = '#3B2A28', LINE = '#F2EEE8', INFIELD = '#1E6B46', INK = '#10141A';
 const NS = 'http://www.w3.org/2000/svg';

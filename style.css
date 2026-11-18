@@ -38,6 +38,8 @@ button:focus-visible, .hit:focus-visible, input:focus-visible, textarea:focus-vi
 .stop b { display: block; font-weight: 600; }
 .stop small { display: block; margin-bottom: 4px; white-space: pre-line; }
 .finish { background: repeating-conic-gradient(#fff 0 25%, var(--bg) 0 50%) 0 0 / 12px 12px; border: 2px solid #fff; }
+.profbox { background: var(--bg); border-radius: 12px; padding: 10px 10px 4px; margin: 4px 0 10px; }
+.profile { display: block; width: 100%; height: auto; font-family: inherit; }
 .squares { display: flex; flex-wrap: wrap; gap: 6px; }
 .squares i { width: 21px; height: 21px; border-radius: 5px; display: block; }
 .text { white-space: pre-wrap; background: var(--box); border-radius: 12px; padding: 11px 13px; }

@@ -3,7 +3,7 @@
 import { Api, isOffline } from './api.js';
 import { Demo } from './demo.js';
 import { Store } from './store.js';
-import { CHANNELS, HEALTH, drawTrack, drawRings, el, face } from './track.js';
+import { CHANNELS, HEALTH, drawProfile, drawTrack, drawRings, el, face } from './track.js';
 
 const LANES = ['ala', 'lat', 'aer', 'for', 'tec'], ZONES = ['sog', 'vo2'];
 const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
@@ -349,11 +349,13 @@ function called(e) {
 }
 
 function stops(view) {
+  // the profile of the session over the stops (view version 6), in place of the squares of each run; an older drawing keeps its squares
+  const drawn = view.profile?.parts?.length > 0;
   const list = view.stops.map((st, i) => h('div', { class: 'stop' }, h('em', { bg: CHANNELS[st.channel]?.[1] || '#7D8590' }, String(i + 1)),
     h('div', {}, h('b', {}, st.title), st.items?.length ? exercises(st.items) : st.detail && h('small', {}, st.detail),
-      st.squares?.length ? h('div', { class: 'squares' }, st.squares.map(c => h('i', { bg: CHANNELS[c]?.[1] || '#7D8590' }))) : null)));
+      !drawn && st.squares?.length ? h('div', { class: 'squares' }, st.squares.map(c => h('i', { bg: CHANNELS[c]?.[1] || '#7D8590' }))) : null)));
   list.push(h('div', { class: 'stop' }, h('em', { class: 'finish' }), h('div', {}, h('b', {}, 'Arrivo'))));
-  return h('div', { class: 'stops' }, list);
+  return [drawn && h('div', { class: 'profbox' }, drawProfile(view.profile)), h('div', { class: 'stops' }, list)];
 }
 
 // ---------------------------------------------------------------- the exercises of the gym (docs/ruoli.md §13)

@@ -15,25 +15,36 @@ const gym = { ...stop('Forza', 'Girata 3×3 50 kg\nPanca 3×6 40 kg\nHip thrust 
   item('Plank', '3′', 'plank', 1, null, 'https://wger.de/it/exercise/458/view/'),
 ] };
 
+// the profiles as Dok publishes them (view version 6): counted by Dok for these same sessions, here only copied
+const PROFILE = {
+  speed: {"min":53,"ticks":[0,2837,5674,8511],"parts":[{"w":2837,"x":0,"k":"warm"},{"rec":"rec 4′","c":"ala","w":2370,"x":3783,"k":"runs","label":"4×60","bars":[[3783,300,100,"ala"],[4473,300,100,"ala"],[5163,300,100,"ala"],[5853,300,100,"ala"]]},{"rec":"rec 3′","c":"ala","w":1199,"x":7855,"k":"runs","label":"3×30","bars":[[7855,150,100,"ala"],[8380,150,100,"ala"],[8904,150,100,"ala"]]},{"w":946,"x":9054,"k":"cool"}],"rows":4},
+  lactic: {"min":38,"ticks":[0,3942,7883],"parts":[{"w":3942,"x":0,"k":"warm"},{"rec":"rec 6′","c":"lat","w":3431,"x":5255,"k":"runs","label":"3×150","bars":[[5255,750,90,"lat"],[6596,750,90,"lat"],[7936,750,90,"lat"]]},{"w":1314,"x":8686,"k":"cool"}],"rows":4},
+  gym: {"min":41,"ticks":[0,3659,7317],"parts":[{"c":"for","w":5122,"x":0,"k":"cols","title":"Forza","items":[{"s":[3,3,3],"t":false,"w":1463,"x":0},{"s":[3,3,3],"t":false,"w":1463,"x":1463},{"s":[3,3,3],"t":false,"w":1463,"x":2927},{"s":[0],"t":true,"w":732,"x":4390}]},{"c":"tec","w":3659,"x":6341,"k":"cols","title":"Andature","items":[{"s":[3],"t":true,"w":3659,"x":6341}]}],"rows":4},
+  easy: {"min":30,"ticks":[0,5000,10000],"parts":[{"c":"aer","w":10000,"x":0,"k":"steady","l":42}],"rows":4},
+  mixed: {"min":48,"ticks":[0,3125,6250,9375],"parts":[{"c":"aer","w":5208,"x":0,"k":"steady","l":42},{"c":"for","w":3750,"x":6250,"k":"cols","title":"Circuito di forza","items":[{"s":[3,3,3],"t":false,"w":1250,"x":6250},{"s":[3,3,3],"t":false,"w":1250,"x":7500},{"s":[0,0,0],"t":false,"w":1250,"x":8750}]}],"rows":4},
+  long: {"min":18,"ticks":[0,8563],"parts":[{"rec":"rec 8′","c":"lat","w":10000,"x":0,"k":"runs","label":"3×200","bars":[[0,1000,85,"lat"],[4500,1000,85,"lat"],[9000,1000,85,"lat"]]}],"rows":4},
+  circuit: {"min":24,"ticks":[0,6250],"parts":[{"c":"for","w":10000,"x":0,"k":"cols","title":"Circuito di forza","items":[{"s":[3,3,3,3],"t":false,"w":3333,"x":0},{"s":[3,3,3,3],"t":false,"w":3333,"x":3333},{"s":[0,0,0,0],"t":false,"w":3333,"x":6667}]}],"rows":4},
+};
+
 export class Demo {
   constructor(today, login = false) {
     this.today = today;
     this.in = !login;
     this.joined = !login;
     this.monday = add(today, -((new Date(today + 'T12:00:00Z').getUTCDay() + 6) % 7));
-    const m = this.monday, session = (id, d, title, channels, stops, did = null, extra = {}) => ({ id, date: add(m, d), title, text: stops.map(s => `${s.title} ${s.detail}`).join('\n'),
-      view: { v: 1, note: '', channels, stops }, did, by_coach: false, coach_mark: null, rpe: did ? 6 : null, note: null, ...extra });
+    const m = this.monday, session = (id, d, title, channels, stops, did = null, extra = {}, profile = null) => ({ id, date: add(m, d), title, text: stops.map(s => `${s.title} ${s.detail}`).join('\n'),
+      view: { v: 6, note: '', channels, stops, profile }, did, by_coach: false, coach_mark: null, rpe: did ? 6 : null, note: null, ...extra });
     const speed = [stop('Andature e tecnica', "Andature 15'", 'tec'), stop('4 × 60 m massimali', "dai blocchi · recupero 4'", 'ala', 4), stop('3 × 30 m lanciati massimali', "recupero 3'", 'ala', 3), stop('Defaticamento', '', '')];
     this.sessions = [
-      session('s1', 0, 'Velocità: partenze', ['ala', 'tec'], speed, 'DONE'),
-      session('s2', 1, 'Resistenza', ['lat'], [stop('Riscaldamento', "Andature 15'", 'tec'), stop('3 × 150 m al 90%', "recupero 6'", 'lat', 3), stop('Defaticamento', '', '')], 'DONE'),
-      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [gym, stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }),
-      session('s4', 3, 'Corsa facile', ['aer'], [stop('Corsa', "30' di corsa lenta", 'aer')], 'DONE'),
-      session('s5', 4, 'Velocità: inseguimenti', ['ala', 'tec'], speed),
-      session('s6', 5, 'Corsa e forza', ['aer', 'for'], [stop('Corsa', "25' di corsa lenta", 'aer'), stop('Circuito di forza', "3 giri · recupero 2'", 'for')]),
-      session('s7', 7, 'Velocità', ['ala', 'tec'], speed),
-      session('s8', 8, 'Resistenza', ['lat'], [stop('3 × 200 m al 85%', "recupero 8'", 'lat', 3)]),
-      session('s9', 9, 'Forza', ['for'], [stop('Circuito di forza', "4 giri · recupero 2'", 'for')]),
+      session('s1', 0, 'Velocità: partenze', ['ala', 'tec'], speed, 'DONE', {}, PROFILE.speed),
+      session('s2', 1, 'Resistenza', ['lat'], [stop('Riscaldamento', "Andature 15'", 'tec'), stop('3 × 150 m al 90%', "recupero 6'", 'lat', 3), stop('Defaticamento', '', '')], 'DONE', {}, PROFILE.lactic),
+      session('s3', 2, 'Forza e tecnica', ['for', 'tec'], [gym, stop('Andature', "Andature 15'", 'tec')], 'OTHER', { note: 'Meno ripetizioni: un giro in meno', rpe: 7 }, PROFILE.gym),
+      session('s4', 3, 'Corsa facile', ['aer'], [stop('Corsa', "30' di corsa lenta", 'aer')], 'DONE', {}, PROFILE.easy),
+      session('s5', 4, 'Velocità: inseguimenti', ['ala', 'tec'], speed, null, {}, PROFILE.speed),
+      session('s6', 5, 'Corsa e forza', ['aer', 'for'], [stop('Corsa', "25' di corsa lenta", 'aer'), stop('Circuito di forza', "3 giri · recupero 2'", 'for')], null, {}, PROFILE.mixed),
+      session('s7', 7, 'Velocità', ['ala', 'tec'], speed, null, {}, PROFILE.speed),
+      session('s8', 8, 'Resistenza', ['lat'], [stop('3 × 200 m al 85%', "recupero 8'", 'lat', 3)], null, {}, PROFILE.long),
+      session('s9', 9, 'Forza', ['for'], [stop('Circuito di forza', "4 giri · recupero 2'", 'for')], null, {}, PROFILE.circuit),
     ];
     this.events = [
       { id: 'e1', title: 'Regionali cadetti', type: 'Gara', start: add(m, 12), end: null, place: 'Torino', days: null, mine: false, called_for: ['100m', '4x100'], reserve_for: [] },
