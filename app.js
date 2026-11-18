@@ -360,8 +360,8 @@ function stops(view) {
 
 // ---------------------------------------------------------------- the exercises of the gym (docs/ruoli.md §13)
 // Dok puts in the stop the picture and the video the coach chose for each exercise (view version 5): the small picture and the
-// phases of the movement, files of this site; the videos and the pages of wger open out of the app. Only http and https links,
-// and only pictures of the folder esercizi/.
+// phases of the movement, files of this site; the videos open out of the app, and there is no link to wger (the user,
+// 18/11/2026). Only http and https links, and only pictures of the folder esercizi/.
 const web = u => typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null;
 const ownPicture = p => typeof p === 'string' && /^esercizi\/[a-z0-9_]+(-[1-9])?\.webp$/.test(p) ? p : null;
 
@@ -378,8 +378,8 @@ function exercises(items) {
 // one phase after the other (variant B of 16/11/2026): this long each, the fade in style.css
 const PHASE_MS = 1100;
 
-/** The picture large: its phases one after the other, by themselves; a tap stops them and starts them again. With the video and
- * the page on wger. Who asked the phone for less motion sees them still, and moves from one to the other with the dots. */
+/** The picture large: its phases one after the other, by themselves; a tap stops them and starts them again. With the video.
+ * Who asked the phone for less motion sees them still, and moves from one to the other with the dots. */
 function bigPicture(x) {
   const frames = (Array.isArray(x.frames) ? x.frames.map(ownPicture).filter(Boolean) : []).slice(0, 9);
   if (!frames.length) frames.push(ownPicture(x.image));
@@ -398,7 +398,6 @@ function bigPicture(x) {
       many && h('div', { class: 'phases' }, dots, say),
       h('h2', {}, x.name), x.dose && h('p', { class: 'dose' }, x.dose),
       web(x.video) && h('a', { class: 'btn main', href: web(x.video), target: '_blank', rel: 'noopener noreferrer' }, '▶ Guarda come si fa'),
-      web(x.page) && h('a', { class: 'btn alt', href: web(x.page), target: '_blank', rel: 'noopener noreferrer' }, 'Scheda su wger'),
       x.credit && h('p', { class: 'credit' }, `Immagine: ${x.credit}, fatta con l'IA e controllata dal coach.${web(x.video) ? ' Il video si apre fuori da Dok Athlon.' : ''}`),
       h('button', { class: 'link', onclick: close }, 'Chiudi')));
   document.body.append(box);
