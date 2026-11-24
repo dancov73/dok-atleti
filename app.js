@@ -787,8 +787,11 @@ function nav() {
 }
 
 const JOIN_ERRORS = {
-  wrong: 'Codice o data di nascita non corretti.', used: 'Questo codice è già stato usato: chiedine uno nuovo al coach.', expired: 'Questo codice è scaduto: chiedine uno nuovo al coach.',
-  blocked: 'Troppi tentativi: chiedi un nuovo codice al coach.', taken: 'Questo atleta ha già un accesso: parla con il coach.', wait: "Troppi tentativi: riprova tra un'ora.",
+  wrong: 'Codice o data di nascita non corretti.', expired: 'Questo codice è scaduto: chiedine uno nuovo al coach.',
+  blocked: 'Troppi tentativi: chiedi un nuovo codice al coach.', wait: "Troppi tentativi: riprova tra un'ora.",
+  // the code ties the card to one email: from another device the athlete enters with that email, no code (24/11/2026)
+  used: "Questo codice è già stato usato. L'hai usato tu su un altro dispositivo? Allora tocca «Esci», poi «Ho già un account», e scrivi la stessa email. Altrimenti parlane con il coach.",
+  taken: "Per questo codice c'è già un accesso. Se sei tu, tocca «Esci», poi «Ho già un account», e scrivi l'email della prima volta. Altrimenti parlane con il coach.",
 };
 
 /** Joining the team with the code of the coach: the account comes first, so nobody can try codes without a working email. */
@@ -808,8 +811,12 @@ function loginScreen() {
   const screens = {
     welcome: () => [h('img', { class: 'logo', src: 'icons/lockup.svg', alt: 'Tekna Dok' }), h('p', {}, 'Entra nella tua squadra.'),
       h('button', { class: 'btn main', onclick: () => { L.joining = true; step('invite'); } }, 'Ho un codice'), h('div', { class: 'row' }),
-      h('button', { class: 'btn alt', onclick: () => { L.joining = false; step('email'); } }, 'Ho già un account')],
-    invite: () => [S.outside ? h('button', { class: 'link', onclick: () => { api.signOut(); location.reload(); } }, 'Esci') : back('Indietro', 'welcome'), count(1), h('h1', {}, 'Il tuo codice'), h('p', { class: 'sm' }, 'Te lo ha mandato il coach.'),
+      h('button', { class: 'btn alt', onclick: () => { L.joining = false; step('email'); } }, 'Ho già un account'),
+      h('p', { class: 'sm' }, 'Anche da un altro telefono o dal computer: con la stessa email della prima volta.')],
+    invite: () => [S.outside ? h('button', { class: 'link', onclick: () => { api.signOut(); location.reload(); } }, 'Esci') : back('Indietro', 'welcome'), count(1), h('h1', {}, 'Il tuo codice'),
+      // signed in with an email that is in no team: maybe not the email of the first time, on another device
+      S.outside && !L.error ? h('p', { class: 'sm' }, `Con ${api.session?.email || 'questa email'} non sei ancora in una squadra. Usi già Dok Athlon su un altro dispositivo? `
+        + "Tocca «Esci» ed entra con l'email che usi lì. Se è la prima volta, scrivi il codice del coach.") : h('p', { class: 'sm' }, 'Te lo ha mandato il coach.'),
       field('Codice', { autocapitalize: 'characters', autocomplete: 'off', placeholder: 'K7F2-Q9', class: 'code' }, 'invite'), field('Data di nascita', { type: 'date', max: today() }, 'birth'),
       h('div', { class: 'row' }), h('button', { class: 'btn main', onclick: () => act(async () => {
         if (!L.invite?.trim() || !L.birth) { L.error = 'Scrivi il codice e la data di nascita.'; render(); return; }

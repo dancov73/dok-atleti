@@ -74,7 +74,9 @@ export class Demo {
   async rpc(name, a = {}) {
     this.net();
     switch (name) {
-      case 'athlete_join': if (a.p_code.replace(/\W/g, '').toUpperCase() !== 'K7F2Q9' || a.p_birth !== '2010-03-04') return 'wrong'; this.joined = true; return 'ok';
+      // ?demo=login: K7F2-Q9 and 04/03/2010 join; GIA-USATO is a code already used, to see what the athlete reads then
+      case 'athlete_join': if (a.p_code.replace(/\W/g, '').toUpperCase() === 'GIAUSATO') return 'used';
+        if (a.p_code.replace(/\W/g, '').toUpperCase() !== 'K7F2Q9' || a.p_birth !== '2010-03-04') return 'wrong'; this.joined = true; return 'ok';
       // ?demo=1&salute=no: an athlete without the consent to the health data
       case 'athlete_me': return this.joined ? { team: 'Squadra di prova', athlete: 'demo', first_name: 'Giulia', health_ok: new URLSearchParams(location.search).get('salute') !== 'no' } : null;
       case 'athlete_week': return {
