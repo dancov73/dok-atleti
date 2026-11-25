@@ -52,6 +52,11 @@ export class Demo {
       { id: 'e3', title: 'Visita medica', type: 'Visita medica', start: add(m, 8), end: null, place: 'Centro medico', days: null, mine: false, called_for: null, reserve_for: null },
     ];
     this.moods = [[0, 4], [1, 3], [2, 3], [3, 2]].map(([d, v]) => ({ day: add(m, d), sleep_quality: 3, sleep_band: d === 3 ? 3 : 4, fatigue: 3, soreness: 3, stress: 3, mood: v, health: d === 3 ? 1 : 0 }));
+    // ?demo=1&stato=100 or stato=fermo: an athlete who already said they are not at 100%, or stopped
+    const said = new URLSearchParams(location.search).get('stato');
+    this.states = !said ? [] : [said === 'fermo'
+      ? { id: 'h1', state: 'stopped', what: 'infortunio', limits: [], note: 'Distorsione alla caviglia destra', start_day: add(today, -2), until_day: add(today, 9), ended_day: null }
+      : { id: 'h1', state: 'limited', what: 'dolore', limits: ['correre forte'], note: 'Mi tira il flessore sinistro', start_day: add(today, -1), until_day: null, ended_day: null }];
     this.messages = [
       { id: 'm1', kind: 'NOTICE', from: 'Marco', at: `${today}T10:00:00Z`, text: 'Domani si va al campo coperto. Portate le scarpe da pista.', workout: null, seen: false },
       { id: 'm2', kind: 'SESSION', from: 'Marco', at: `${today}T09:00:00Z`, text: 'Cura i primi 10 metri: spinta lunga.', workout: 's5', seen: false },
@@ -70,6 +75,7 @@ export class Demo {
   async verify(email, code) { this.net(); if (code !== '123456') throw new Error('Codice non valido.'); this.in = true; }
   async seat() { this.net(); return { team_id: 'demo', athlete_id: 'demo' }; }
   async wellness(from, to) { this.net(); return this.moods.filter(w => w.day >= from && w.day <= to); }
+  async health() { this.net(); return this.states.filter(x => !x.ended_day); }
   async reports() { this.net(); return []; }
   async rpc(name, a = {}) {
     this.net();
@@ -97,7 +103,17 @@ export class Demo {
       case 'athlete_messages': return this.messages;
       case 'athlete_message_seen': this.messages.find(m => m.id === a.p_id).seen = true; return null;
       case 'athlete_mark': Object.assign(this.sessions.find(s => s.id === a.p_workout), { did: a.p_did, rpe: a.p_rpe, note: a.p_note }); return null;
-      case 'athlete_wellness': this.moods = this.moods.filter(w => w.day !== a.p_day).concat({ day: a.p_day, sleep_quality: a.p_sleep_quality, sleep_band: a.p_sleep_band, fatigue: a.p_fatigue, soreness: a.p_soreness, stress: a.p_stress, mood: a.p_mood, health: a.p_health }); return null;
+      case 'athlete_wellness': this.moods = this.moods.filter(w => w.day !== a.p_day).concat({ day: a.p_day, sleep_quality: a.p_sleep_quality, sleep_band: a.p_sleep_band, fatigue: a.p_fatigue, soreness: a.p_soreness, stress: a.p_stress, mood: a.p_mood, health: a.p_health,
+        note: a.p_note === undefined ? this.moods.find(w => w.day === a.p_day)?.note || null : a.p_note || null }); return null;
+      case 'athlete_health': {
+        const was = this.states.find(x => x.id === a.p_id);
+        if (!was && this.states.some(x => x.state === 'stopped' && !x.ended_day)) throw new Error('sei fermo: il rientro lo decide il coach');
+        if (was?.state === 'stopped' && a.p_state !== 'stopped') throw new Error('il rientro lo decide il coach');
+        this.states = this.states.filter(x => x.id !== a.p_id).map(x => x.ended_day ? x : { ...x, ended_day: add(this.today, -1) })
+          .concat({ id: a.p_id, state: a.p_state, what: a.p_what, limits: a.p_limits || [], note: a.p_note, start_day: was?.start_day || this.today, until_day: a.p_until, ended_day: null });
+        return null;
+      }
+      case 'athlete_health_end': this.states = this.states.map(x => x.id === a.p_id ? { ...x, ended_day: add(this.today, -1) } : x); return null;
       case 'athlete_absence': {
         const id = a.p_id || `a${Date.now()}`;
         this.events = this.events.filter(e => e.id !== id).concat({ id, title: a.p_reason, type: 'Assenza', start: a.p_start, end: a.p_end, place: null, days: a.p_days?.length ? a.p_days : null, mine: true, called_for: null, reserve_for: null });

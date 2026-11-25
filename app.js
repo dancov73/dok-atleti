@@ -48,7 +48,7 @@ const root = document.getElementById('app');
 const params = new URLSearchParams(location.search), demo = params.has('demo');
 const api = demo ? new Demo(today(), params.get('demo') === 'login') : new Api();
 const store = new Store(demo ? 'dok-demo' : 'dok');
-const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'welcome' },
+const S = { tab: 'pista', monday: mondayOf(today()), sel: weekday(today()), weeks: new Map(), wellness: new Map(), health: [], messages: [], races: [], reports: null, cal: 'week', month: today().slice(0, 7), form: null, login: { step: 'welcome' },
   queue: [], at: {}, offline: false };
 // the cloud refused the session: the copies go, the marks still to send wait for the same account
 api.refused = () => { store.clearCopies(); S.ready = false; S.weeks.clear(); };
@@ -113,6 +113,8 @@ async function week(monday, force = false) {
   return c.w;
 }
 async function messages() { S.messages = await fresh('messages', () => api.rpc('athlete_messages')); applyQueue(); }
+/** How they said they are, still open: only with the consent to the health data. */
+async function health() { S.health = S.me.health_ok ? await fresh('health', () => api.health()) : []; applyQueue(); }
 
 /** The copy first, so the app opens at once also with no network; then the cloud, the marks waiting and what to keep for later. */
 async function start() {
@@ -120,7 +122,7 @@ async function start() {
   const me = await copy('me'), w = me && await copy(`week:${S.monday}`);
   if (w) {
     S.me = me; S.seat = await copy('seat');
-    S.weeks.set(S.monday, w.w); S.wellness.set(S.monday, w.ok); S.messages = (await copy('messages')) || [];
+    S.weeks.set(S.monday, w.w); S.wellness.set(S.monday, w.ok); S.messages = (await copy('messages')) || []; S.health = (await copy('health')) || [];
     applyQueue(); S.ready = true; render();
   }
   try {
@@ -135,7 +137,7 @@ async function start() {
     return;
   }
   S.offline = false; S.stuck = false;
-  await Promise.all([week(S.monday, true), messages()]);
+  await Promise.all([week(S.monday, true), messages(), health()]);
   S.ready = true;
   render();
   if (!demo) store.keepOn();
@@ -160,6 +162,7 @@ async function resume() {
   S.weeks.clear();
   await week(S.monday);
   await messages();
+  await health();
   render();
   told(await sendQueue());
 }
@@ -192,7 +195,7 @@ async function drain() {
   for (const item of [...S.queue]) {
     try {
       try { await api.rpc(item.name, item.args); }
-      catch (e) { if (e.status === 404 && item.args.p_at !== undefined) { const { p_at, ...old } = item.args; await api.rpc(item.name, old); } else throw e; }
+      catch (e) { if (e.status === 404 && (item.args.p_at !== undefined || (item.name === 'athlete_wellness' && item.args.p_note !== undefined))) { const { p_at, p_note, ...old } = item.args; await api.rpc(item.name, old); } else throw e; }
       S.offline = false;
     } catch (e) {
       if (isOffline(e)) { S.offline = true; break; }
@@ -205,7 +208,7 @@ async function drain() {
   }
   if (moved) {
     S.weeks.clear();
-    try { await week(S.monday); await messages(); } catch { /* the copy stays on screen */ }
+    try { await week(S.monday); await messages(); await health(); } catch { /* the copy stays on screen */ }
     render();
   }
   return failed;
@@ -217,7 +220,8 @@ function told(failed) {
 
 /** What waits on the phone, drawn over what came from the cloud or from the copy. */
 function applyQueue() {
-  for (const { name, args: a } of S.queue) {
+  for (const item of S.queue) {
+    const { name, args: a } = item;
     if (name === 'athlete_mark') for (const w of S.weeks.values()) {
       const s = w.sessions.find(x => x.id === a.p_workout);
       if (s) Object.assign(s, { did: a.p_did, rpe: a.p_rpe, note: a.p_note, pending: true });
@@ -225,8 +229,14 @@ function applyQueue() {
     if (name === 'athlete_wellness') {
       const m = mondayOf(a.p_day), list = S.wellness.get(m);
       if (list) S.wellness.set(m, list.filter(x => x.day !== a.p_day).concat({ day: a.p_day, sleep_quality: a.p_sleep_quality, sleep_band: a.p_sleep_band, fatigue: a.p_fatigue,
-        soreness: a.p_soreness, stress: a.p_stress, mood: a.p_mood, health: a.p_health, pending: true }));
+        soreness: a.p_soreness, stress: a.p_stress, mood: a.p_mood, health: a.p_health, note: a.p_note === undefined ? list.find(x => x.day === a.p_day)?.note : a.p_note || null, pending: true }));
     }
+    if (name === 'athlete_health') {
+      const was = S.health.find(x => x.id === a.p_id);
+      S.health = [{ id: a.p_id, state: a.p_state, what: a.p_what, limits: a.p_limits || [], note: a.p_note, start_day: was?.start_day || item.at.slice(0, 10), until_day: a.p_until, ended_day: null, pending: true },
+        ...S.health.filter(x => x.id !== a.p_id && x.state === 'stopped')];
+    }
+    if (name === 'athlete_health_end') S.health = S.health.filter(x => x.id !== a.p_id);
     if (name === 'athlete_absence') for (const [m, w] of S.weeks) {
       w.events = w.events.filter(e => e.id !== a.p_id);
       if (a.p_start <= add(m, 6) && (a.p_end || a.p_start) >= m) w.events.push({ id: a.p_id, title: a.p_reason, type: 'Assenza', start: a.p_start, end: a.p_end, place: null,
@@ -250,7 +260,7 @@ function dayData(monday, i) {
   for (const s of w.sessions.filter(x => x.date === day)) for (const c of s.view?.channels || []) lanes[c] = stateOf(s, day);
   const ev = w.events.filter(e => covers(e, day)), away = ev.find(isAway);
   const mood = (S.wellness.get(monday) || []).find(x => x.day === day);
-  return { lanes, mood: mood?.mood, pain: (mood?.health || 0) > 0, ask: day === today() && !mood && !away, race: ev.some(isRace), visit: ev.some(isVisit), away: !!away, label: longDay(day) };
+  return { lanes, mood: mood?.mood, pain: (mood?.health || 0) > 0 || !!healthOn(day), ask: day === today() && !mood && !away, race: ev.some(isRace), visit: ev.some(isVisit), away: !!away, label: longDay(day) };
 }
 
 function legend(lanes) {
@@ -275,6 +285,7 @@ function weekBar() {
 function pista() {
   if (S.form?.what === 'wellness') return wellnessForm();
   if (S.form?.what === 'absence') return absenceForm();
+  if (S.form?.what === 'health') return healthForm();
   const monday = S.monday, day = add(monday, S.sel), lanes = lanesFor(), w = S.weeks.get(monday);
   const sessions = w.sessions.filter(s => s.date === day), ev = w.events.filter(e => covers(e, day));
   const days = Array.from({ length: 7 }, (_, i) => dayData(monday, i));
@@ -291,6 +302,7 @@ function pista() {
     drawTrack({ lanes, days, today: monday === mondayOf(today()) ? weekday(today()) : null, sel: S.sel, center, health: S.me.health_ok, onDay: i => go({ sel: i, form: null }) }),
     legend(lanes),
     S.me.health_ok ? moodRow(day, !!away) : h('p', { class: 'lockline' }, icon(LOCK, 18), h('span', {}, '«Come stai» si apre quando la società registra il tuo consenso ai dati sulla salute.')),
+    S.me.health_ok && healthRow(day),
     ...dayDetail(day, sessions, ev),
   ];
 }
@@ -299,8 +311,8 @@ function pista() {
 const SHORT = { sleep_quality: 'Sonno', fatigue: 'Fatica', soreness: 'Dolori', stress: 'Stress' };
 const moodOf = day => (S.wellness.get(mondayOf(day)) || []).find(x => x.day === day);
 const moodWords = m => [`${SHORT.sleep_quality} ${LEVELS.sleep_quality[1][m.sleep_quality - 1]?.toLowerCase()}`, `${LEVELS.sleep_band[1][m.sleep_band - 1]} ore`,
-  ...['fatigue', 'soreness', 'stress'].map(k => `${SHORT[k]} ${LEVELS[k][1][m[k] - 1]?.toLowerCase()}`), m.health > 0 && `dolore o malattia: ${m.health === 1 ? "un po'" : 'molto'}`].filter(Boolean).join(' · ');
-const openMood = (day, m) => go({ form: { what: 'wellness', day, a: m ? { mood: m.mood, sleep_quality: m.sleep_quality, sleep_band: m.sleep_band, fatigue: m.fatigue, soreness: m.soreness, stress: m.stress, health: m.health } : {} } });
+  ...['fatigue', 'soreness', 'stress'].map(k => `${SHORT[k]} ${LEVELS[k][1][m[k] - 1]?.toLowerCase()}`), m.health > 0 && `dolore o malattia: ${m.health === 1 ? "un po'" : 'molto'}`, m.note && `«${m.note}»`].filter(Boolean).join(' · ');
+const openMood = (day, m) => go({ form: { what: 'wellness', day, a: m ? { mood: m.mood, sleep_quality: m.sleep_quality, sleep_band: m.sleep_band, fatigue: m.fatigue, soreness: m.soreness, stress: m.stress, health: m.health, note: m.note || '' } : {} } });
 
 /** How they felt on the day touched, to change; a day of the last week with no answer, to answer. Today with no answer has its strip. */
 function moodRow(day, away) {
@@ -447,6 +459,53 @@ function markForm(s, f) {
     h('div', { class: 'row' }, h('button', { class: 'link', onclick: () => go({ form: null }) }, 'Annulla')));
 }
 
+// ---------------------------------------------------------------- how they are, a state that lasts (docs/interfaccia.md §3, variant B of 24/11/2026)
+const KINDS = [['malessere', 'Malessere'], ['dolore', 'Dolore'], ['infortunio', 'Infortunio'], ['malattia', 'Malattia']];
+const LIMITS = [['correre forte', 'Correre forte'], ['saltare', 'Saltare'], ['pesi', 'Pesi']];
+/** What they said holds on [day]: a stop until the coach lets them back, a «non al 100%» until its day, if it has one. */
+const healthOn = day => S.health.find(x => !x.ended_day && x.start_day <= day && (x.state === 'stopped' || !x.until_day || day <= x.until_day));
+const healthWords = x => [x.what, x.state !== 'stopped' && x.limits?.length && `non riesco a: ${x.limits.join(', ')}`, x.note && `«${x.note}»`,
+  x.until_day ? `${x.state === 'stopped' ? 'previsto ' : ''}fino al ${dayMonth(x.until_day)}` : null].filter(Boolean).join(' · ');
+const openHealth = x => go({ form: { what: 'health', id: x?.id, state: x?.state || 'limited', locked: x?.state === 'stopped', kind: x?.what || null, limits: x?.limits || [], note: x?.note || '',
+  until: x?.until_day ? (x.until_day === today() ? 'today' : 'date') : x ? 'unknown' : 'today', date: x?.until_day || add(today(), 3) } });
+
+/** Under «Come stai»: what they said and how to change it, or, today, the way to say it. */
+function healthRow(day) {
+  const x = healthOn(day), now = today();
+  if (!x) return day === now ? h('button', { class: 'moodrow', onclick: () => openHealth(null) }, h('span', {}, 'Non stai bene?', h('small', {}, 'Un dolore, un malessere, un infortunio')), h('b', { class: 'link' }, 'Dillo al coach ›')) : null;
+  const well = () => run(async () => { const how = await write('athlete_health_end', { p_id: x.id }); render(); toast(how === 'sent' ? 'Bene! Il coach lo vede in Dok' : SAVED); });
+  return h('div', { class: 'det health' }, h('small', {}, 'Il coach lo sa'), h('div', { class: 'title' }, x.state === 'stopped' ? 'Sei fermo' : 'Non sei al 100%'), h('div', { class: 'text' }, healthWords(x)),
+    x.pending && pend(),
+    h('div', { class: 'row' }, h('button', { class: 'link', onclick: () => openHealth(x) }, 'Cambia ›'), x.state !== 'stopped' && h('button', { class: 'link', onclick: well }, 'Sto di nuovo bene ›')),
+    x.state === 'stopped' && h('p', {}, h('small', {}, 'Quando rientri lo decide il coach.')));
+}
+
+function healthForm() {
+  const f = S.form, stop = f.state === 'stopped';
+  const ok = !!f.kind && (f.until !== 'date' || f.date >= today());
+  const set = patch => { Object.assign(f, patch); render(); };
+  const save = () => run(async () => {
+    // the id made here: sent twice with no answer in between, it stays one
+    const how = await write('athlete_health', { p_id: f.id || uuid(), p_state: f.state, p_what: f.kind, p_limits: stop ? [] : f.limits, p_note: f.note.trim() || null,
+      p_until: f.until === 'today' ? today() : f.until === 'date' ? f.date : null });
+    S.form = null; render(); toast(how === 'sent' ? 'Il coach lo vede in Dok' : SAVED);
+  });
+  return [
+    h('button', { class: 'link', onclick: () => go({ form: null }) }, '‹ Annulla'), h('h1', {}, 'Come sei messo?'),
+    h('div', { class: 'seg' }, [['limited', 'Non al 100%'], ['stopped', 'Fermo']].map(([s, t]) => h('button', { class: f.state === s ? 'on' : '', disabled: f.locked && s !== 'stopped', onclick: () => set({ state: s }) }, t))),
+    h('p', { class: 'sm' }, stop ? 'Fermo: non ti alleni. Quando rientri lo decide il coach.' : 'Non al 100%: ti alleni, ma non riesci a fare tutto. Lo togli tu quando stai meglio.'),
+    h('label', { class: 'q' }, 'Che cosa'), h('div', { class: 'picks' }, KINDS.map(([k, t]) => h('button', { class: 'pick' + (f.kind === k ? ' on' : ''), onclick: () => set({ kind: k }) }, t))),
+    !stop && h('label', { class: 'q' }, 'Non riesco a'),
+    !stop && h('div', { class: 'picks' }, LIMITS.map(([k, t]) => h('button', { class: 'pick' + (f.limits.includes(k) ? ' on' : ''), onclick: () => set({ limits: f.limits.includes(k) ? f.limits.filter(x => x !== k) : [...f.limits, k] }) }, t))),
+    h('label', { class: 'q' }, 'Che cosa non va, se vuoi'), h('input', { value: f.note, maxlength: 300, placeholder: 'Per esempio: mi tira il flessore sinistro', 'aria-label': 'Che cosa non va', oninput: e => { f.note = e.target.value; } }),
+    h('label', { class: 'q' }, stop ? 'Fino a quando, secondo te' : 'Fino a'),
+    h('div', { class: 'seg' }, [['today', 'Oggi'], ['date', 'Una data'], ['unknown', 'Non so']].map(([u, t]) => h('button', { class: f.until === u ? 'on' : '', onclick: () => set({ until: u }) }, t))),
+    f.until === 'date' && h('input', { type: 'date', value: f.date, min: today(), 'aria-label': 'Fino al', onchange: e => set({ date: e.target.value }) }),
+    h('div', { class: 'row' }), h('button', { class: 'btn main', disabled: !ok, onclick: save }, 'Salva'),
+    h('p', { class: 'sm' }, 'Vale subito. Lo vedete solo tu e i tuoi coach, non i genitori.'),
+  ];
+}
+
 // ---------------------------------------------------------------- absences
 function absenceBox(e, day) {
   const days = e.days?.map(d => DAY_NAMES[d - 1].toLowerCase()).join(', ');
@@ -486,7 +545,7 @@ function absenceForm() {
     h('label', { class: 'q' }, 'Motivo'), h('div', { class: 'picks' }, REASONS.map(r => h('button', { class: 'pick' + (f.reason === r ? ' on' : ''), onclick: () => set({ reason: r }) }, r))),
     h('label', { class: 'q' }, 'Nota per il coach, se vuoi'), h('input', { value: f.note, maxlength: 300, oninput: e => { f.note = e.target.value; } }),
     absenceCount(f) && h('p', { class: 'sm' }, absenceCount(f)),
-    h('div', { class: 'row' }), h('button', { class: 'btn main', disabled: !ok, onclick: save }, 'Salva'), h('p', { class: 'sm' }, 'Il coach la vede subito in Dok. Per malattia o infortunio usa «Come stai».'),
+    h('div', { class: 'row' }), h('button', { class: 'btn main', disabled: !ok, onclick: save }, 'Salva'), h('p', { class: 'sm' }, 'Il coach la vede subito in Dok. Per un malessere o un infortunio usa «Non stai bene?» sotto la pista.'),
   ];
 }
 
@@ -496,7 +555,8 @@ function wellnessForm() {
   const set = (k, v) => { a[k] = v; render(); };
   const face4 = v => { const s = el('svg', { viewBox: '0 0 60 60', width: '100%', 'aria-hidden': 'true' }); face(s, 30, 30, 26, v); return s; };
   const save = () => run(async () => {
-    const how = await write('athlete_wellness', { p_day: day, p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health });
+    const how = await write('athlete_wellness', { p_day: day, p_sleep_quality: a.sleep_quality, p_sleep_band: a.sleep_band, p_fatigue: a.fatigue, p_soreness: a.soreness, p_stress: a.stress, p_mood: a.mood, p_health: a.health,
+      p_note: (a.note || '').trim() });
     S.form = null; render(); toast(how === 'sent' ? 'Grazie! La tua faccina è sulla pista' : SAVED);
   });
   return [
@@ -507,6 +567,9 @@ function wellnessForm() {
       h('div', { class: 'picks' }, words.map((w, i) => h('button', { class: 'pick' + (a[k] === i + 1 ? ' on' : ''), onclick: () => set(k, i + 1) }, w)))]),
     h('label', { class: 'q' }, 'Hai un dolore o una malattia che ti limita?'),
     h('div', { class: 'picks' }, ['No', "Un po'", 'Molto'].map((w, i) => h('button', { class: 'pick' + (a.health === i ? ' on' : ''), onclick: () => set('health', i) }, w))),
+    // a free line for the coach, with the answers of the day (24/11/2026)
+    h('label', { class: 'q' }, 'Vuoi dire qualcosa al coach?'),
+    h('input', { value: a.note || '', maxlength: 200, placeholder: 'Se vuoi, scrivilo qui', 'aria-label': 'Qualcosa da dire al coach', oninput: e => { a.note = e.target.value; } }),
     h('div', { class: 'row' }), h('button', { class: 'btn main', disabled: !done, onclick: save }, 'Salva'),
     h('p', { class: 'sm' }, 'Le risposte le vedete solo tu e i tuoi coach, non i genitori.'),
   ];

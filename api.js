@@ -73,7 +73,10 @@ export class Api {
     return a?.[0] || null;
   }
 
-  wellness(from, to) { return this.call(`/rest/v1/wellness_daily?select=day,sleep_quality,sleep_band,fatigue,soreness,stress,mood,health&day=gte.${from}&day=lte.${to}&order=day.asc`); }
+  wellness(from, to) { return this.call(`/rest/v1/wellness_daily?select=day,sleep_quality,sleep_band,fatigue,soreness,stress,mood,health,note&day=gte.${from}&day=lte.${to}&order=day.asc`); }
+
+  /** How they said they are, what is still open (docs/interfaccia.md §3): the rules let them read their own rows only. */
+  health() { return this.call('/rest/v1/athlete_health?select=id,state,what,limits,note,start_day,until_day,ended_day&ended_day=is.null&order=created_at.desc'); }
 
   /** The reports the coach published for them, the latest first, each with a link valid for an hour. */
   async reports(seat) {
